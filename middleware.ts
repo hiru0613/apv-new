@@ -6,6 +6,7 @@ import { verifyAccountGateCookieValue } from "./lib/account-gate-cookie";
 import { isSelfHostedModeEnabled } from "./lib/self-hosting";
 
 const PUBLIC_ROUTE_PREFIXES = [
+  "/api/tool-proxy,"
   "/verify",
   "/api/auth/",
   "/api/verify/",
