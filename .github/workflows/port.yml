@@ -1,4 +1,4 @@
-name: ios-pin
+name: ios-pin2
 on:
   workflow_dispatch:
 jobs:
@@ -14,70 +14,29 @@ jobs:
       - name: patch
         run: |
           python3 - <<'PY'
-          import io
+          import io, re
           p = "components/desktop-shell.tsx"
           s = io.open(p, encoding="utf-8").read()
-          if "useIosKeyboardPin" in s:
-              print("ALREADY_THERE")
+          if "setInterval(schedule, 250)" in s:
+              print("ALREADY")
               raise SystemExit(0)
-          HOOK = '''function useIosKeyboardPin() {
-            useEffect(() => {
-              if (typeof window === "undefined" || typeof document === "undefined") return;
-              const vv = window.visualViewport;
-              if (!vv) return;
-              let raf = 0;
-              let current = 0;
-              const run = () => {
-                raf = 0;
-                const shell = document.querySelector(".phone-shell-wrap");
-                if (!shell) return;
-                const shrink = window.innerHeight - vv.height;
-                if (shrink < 40) {
-                  if (current !== 0) {
-                    current = 0;
-                    shell.style.transform = "";
-                  }
-                  return;
-                }
-                const bar = document.querySelector(".chat-input-bar");
-                if (!bar) return;
-                const visibleBottom = vv.offsetTop + vv.height;
-                const base = bar.getBoundingClientRect().bottom + current;
-                const need = base - visibleBottom;
-                const next = need > 4 ? Math.round(need) : 0;
-                if (Math.abs(next - current) < 2) return;
-                current = next;
-                shell.style.transform = next > 0 ? "translate3d(0,-" + next + "px,0)" : "";
-              };
-              const schedule = () => {
-                if (!raf) raf = window.requestAnimationFrame(run);
-              };
-              const onOut = () => {
-                window.setTimeout(schedule, 100);
-              };
-              vv.addEventListener("resize", schedule);
-              vv.addEventListener("scroll", schedule);
-              document.addEventListener("focusout", onOut, true);
-              return () => {
-                if (raf) window.cancelAnimationFrame(raf);
-                vv.removeEventListener("resize", schedule);
-                vv.removeEventListener("scroll", schedule);
-                document.removeEventListener("focusout", onOut, true);
-              };
-            }, []);
-          }
-
-          '''
-          s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
-          s = s.replace("  useIosViewportPanReset();", "  useIosViewportPanReset();\n  useIosKeyboardPin();", 1)
+          s, n1 = re.subn(r'(\n(\s*)vv\.addEventListener\("scroll", schedule\);)',
+                          r'\1\n\2const __pinTimer = window.setInterval(schedule, 250);\n\2document.addEventListener("focusin", schedule, true);',
+                          s, count=1)
+          s, n2 = re.subn(r'(\n(\s*)vv\.removeEventListener\("scroll", schedule\);)',
+                          r'\1\n\2window.clearInterval(__pinTimer);\n\2document.removeEventListener("focusin", schedule, true);',
+                          s, count=1)
+          print("SUBST", n1, n2)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit("REGEX_MISS")
           io.open(p, "w", encoding="utf-8").write(s)
-          print("SHELL_OK")
+          print("PIN_OK")
           PY
-          grep -c useIosKeyboardPin components/desktop-shell.tsx
+          grep -n "setInterval(schedule, 250)" components/desktop-shell.tsx
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: 键盘上抬改为 inline transform" || true
+          git commit -m "fix: 键盘上抬改为轮询触发" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
