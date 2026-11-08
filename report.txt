@@ -1,4 +1,0 @@
-SYNTAX_OK
-PATCHED components/desktop-shell.tsx (2)
-ALL_OK_3
-TSC_READY
