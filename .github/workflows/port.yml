@@ -65,23 +65,15 @@ jobs:
           }
 
           '''
+          if "useIosKeyboardPin" in s:
+              print("ALREADY_THERE")
+              raise SystemExit(0)
           s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
           s = s.replace("  useIosViewportPanReset();", "  useIosViewportPanReset();\n  useIosKeyboardPin();", 1)
           io.open(p, "w", encoding="utf-8").write(s)
           print("SHELL_OK")
           PY
-          python3 - <<'PY'
-          import io
-          p = "components/viewport-debug-badge.tsx"
-          s = io.open(p, encoding="utf-8").read()
-          old = "                  + ` gap=${Math.round(window.innerHeight - (r?.bottom ?? 0))}`"
-          new = old + "\n                  + ` sa=${(navigator as any).standalone ? 1 : 0} tf=${shell?.style.transform || \"-\"}`"
-          if s.count(old) != 1:
-              raise SystemExit("BAD_BADGE_ANCHOR")
-          s = s.replace(old, new)
-          io.open(p, "w", encoding="utf-8").write(s)
-          print("BADGE_OK")
-          PY
+          grep -c "useIosKeyboardPin" components/desktop-shell.tsx
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
