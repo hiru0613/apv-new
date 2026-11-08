@@ -1100,6 +1100,53 @@ function useIosKeyboardLift() {
   }, []);
 }
 
+function useIosKeyboardPin() {
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    let raf = 0;
+    let current = 0;
+    const run = () => {
+      raf = 0;
+      const shell = document.querySelector(".phone-shell-wrap");
+      if (!shell) return;
+      const shrink = window.innerHeight - vv.height;
+      if (shrink < 40) {
+        if (current !== 0) {
+          current = 0;
+          shell.style.transform = "";
+        }
+        return;
+      }
+      const bar = document.querySelector(".chat-input-bar");
+      if (!bar) return;
+      const visibleBottom = vv.offsetTop + vv.height;
+      const base = bar.getBoundingClientRect().bottom + current;
+      const need = base - visibleBottom;
+      const next = need > 4 ? Math.round(need) : 0;
+      if (Math.abs(next - current) < 2) return;
+      current = next;
+      shell.style.transform = next > 0 ? "translate3d(0,-" + next + "px,0)" : "";
+    };
+    const schedule = () => {
+      if (!raf) raf = window.requestAnimationFrame(run);
+    };
+    const onOut = () => {
+      window.setTimeout(schedule, 100);
+    };
+    vv.addEventListener("resize", schedule);
+    vv.addEventListener("scroll", schedule);
+    document.addEventListener("focusout", onOut, true);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      vv.removeEventListener("resize", schedule);
+      vv.removeEventListener("scroll", schedule);
+      document.removeEventListener("focusout", onOut, true);
+    };
+  }, []);
+}
+
 type MusicOverlayController = {
   closeFullPlayer: () => void;
 };
@@ -1133,6 +1180,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   useAndroidCaretKeyboardLift();
   useIosKeyboardLift();
   useIosViewportPanReset();
+  useIosKeyboardPin();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [layout, setLayout] = useState<DesktopLayout>(DEFAULT_LAYOUT);
   // Dock is an ordered icon-id list (max DOCK_MAX), kept disjoint from `layout`.
