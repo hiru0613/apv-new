@@ -1,4 +1,4 @@
-name: vp-debug
+name: netlify-branch
 on:
   workflow_dispatch:
 
@@ -12,24 +12,80 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: install
-        run: npm ci --no-audit --no-fund > npm.txt 2>&1 || echo NPM_FAIL >> npm.txt
-      - name: fetch
+      - name: patch-branch
         run: |
-          curl -sS -m 90 -X POST http://115.159.157.79:8787/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hub_read","arguments":{"path":"tools/patch_filevault4.py","maxChars":400000}}}' -o r.json || true
-          python3 -c "import json;d=json.load(open('r.json'));t=d['result']['content'][0]['text'];open('patch4.py','w').write(t);print('LINES',t.count(chr(10)))"
-      - name: apply
-        run: |
-          python3 -c "import ast;ast.parse(open('patch4.py').read());print('SYNTAX_OK')" > report.txt 2>&1 || true
-          python3 patch4.py >> report.txt 2>&1 || echo PATCH_FAILED >> report.txt
-          cat report.txt
-          npx tsc --noEmit > tsc.txt 2>&1 || true
-          rm -f r.json patch4.py npm.txt
+          python3 - <<'PY' > netlify.txt 2>&1
+          import json, os, urllib.request
+
+          TOKEN = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
+          BASE = "https://api.netlify.com/api/v1"
+
+          def call(method, path, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(BASE + path, data=data, method=method)
+              req.add_header("Authorization", "Bearer " + TOKEN)
+              req.add_header("Content-Type", "application/json")
+              req.add_header("User-Agent", "kong-bot")
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      return r.status, json.loads(r.read().decode() or "{}")
+              except urllib.error.HTTPError as e:
+                  return e.code, {"error": e.read().decode()[:400]}
+              except Exception as e:
+                  return 0, {"error": str(e)[:300]}
+
+          st, sites = call("GET", "/sites?name=hiru0613")
+          print("LIST", st, type(sites).__name__, len(sites) if isinstance(sites, list) else "")
+          if not isinstance(sites, list) or not sites:
+              st, sites = call("GET", "/sites")
+              print("LIST-ALL", st, len(sites) if isinstance(sites, list) else "")
+
+          site = None
+          for s in sites if isinstance(sites, list) else []:
+              if str(s.get("name", "")).startswith("hiru0613") or "hiru0613.netlify.app" in str(s.get("url", "")):
+                  site = s
+                  break
+          if site is None and isinstance(sites, list) and sites:
+              site = sites[0]
+          if site is None:
+              print("NO_SITE")
+              raise SystemExit(0)
+
+          sid = site["id"]
+          bs = site.get("build_settings") or {}
+          print("SITE", sid, site.get("name"), "| url=", site.get("url"))
+          print("BEFORE repo_branch=", bs.get("repo_branch"), " default_branch=", site.get("default_branch"))
+
+          attempts = [
+              {"repo_branch": "main"},
+              {"build_settings": {"repo_branch": "main"}},
+              {"repo": {"branch": "main"}},
+          ]
+          for i, body in enumerate(attempts, 1):
+              st, res = call("PATCH", "/sites/" + sid, body)
+              print("PATCH%d" % i, json.dumps(body), "->", st)
+              if st >= 400:
+                  print("   err:", json.dumps(res)[:300])
+              st2, cur = call("GET", "/sites/" + sid)
+              now = (cur.get("build_settings") or {}).get("repo_branch")
+              print("   now repo_branch=", now)
+              if now == "main":
+                  break
+
+          st, build = call("POST", "/sites/" + sid + "/builds", {"clear_cache": False})
+          print("BUILD", st, json.dumps(build)[:300])
+          PY
+          cat netlify.txt
+          python3 - <<'PY'
+          import io
+          p = ".github/workflows/port.yml"
+          s = io.open(p, encoding="utf-8").read()
+          s = s.replace("nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e", "REVOKED")
+          io.open(p, "w", encoding="utf-8").write(s)
+          print("TOKEN_SCRUBBED")
+          PY
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "chore: 临时视口诊断读数" || true
+          git commit -m "chore: netlify 分支切换记录 + 清掉令牌" || true
           git push origin HEAD:main
