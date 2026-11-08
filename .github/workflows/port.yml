@@ -1,4 +1,4 @@
-name: ios-lift
+name: badge-center
 on:
   workflow_dispatch:
 jobs:
@@ -13,69 +13,20 @@ jobs:
           fetch-depth: 0
       - name: patch
         run: |
-          sed -i 's/bottom: 0, zIndex: 2147483647/top: 0, zIndex: 2147483647/' components/viewport-debug-badge.tsx
           python3 - <<'PY'
           import io
-          p = "components/desktop-shell.tsx"
+          p = "components/viewport-debug-badge.tsx"
           s = io.open(p, encoding="utf-8").read()
-          HOOK = '''function useIosKeyboardLift() {
-            useEffect(() => {
-              if (typeof window === "undefined" || typeof document === "undefined") return;
-              if (/Android/i.test(navigator.userAgent)) return;
-              const vv = window.visualViewport;
-              if (!vv) return;
-              const root = document.documentElement;
-              let lift = 0;
-              let raf = 0;
-              const apply = (next) => {
-                const v = Math.max(0, Math.round(next));
-                if (Math.abs(v - lift) < 2) return;
-                lift = v;
-                if (v > 0) root.style.setProperty("--mobile-keyboard-lift", v + "px");
-                else root.style.removeProperty("--mobile-keyboard-lift");
-              };
-              const run = () => {
-                raf = 0;
-                const shrink = window.innerHeight - vv.height;
-                const bar = document.querySelector(".chat-input-bar");
-                if (!bar || shrink < 40) {
-                  apply(0);
-                  return;
-                }
-                const rect = bar.getBoundingClientRect();
-                const visibleBottom = vv.offsetTop + vv.height;
-                const need = rect.bottom + lift - visibleBottom;
-                apply(need > 0 ? Math.min(need, shrink + 120) : 0);
-              };
-              const schedule = () => {
-                if (!raf) raf = window.requestAnimationFrame(run);
-              };
-              const onOut = () => {
-                window.setTimeout(schedule, 80);
-              };
-              vv.addEventListener("resize", schedule);
-              vv.addEventListener("scroll", schedule);
-              document.addEventListener("focusout", onOut, true);
-              return () => {
-                if (raf) window.cancelAnimationFrame(raf);
-                vv.removeEventListener("resize", schedule);
-                vv.removeEventListener("scroll", schedule);
-                document.removeEventListener("focusout", onOut, true);
-                root.style.removeProperty("--mobile-keyboard-lift");
-              };
-            }, []);
-          }
-
-          '''
-          s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
-          s = s.replace("  useAndroidCaretKeyboardLift();", "  useAndroidCaretKeyboardLift();\n  useIosKeyboardLift();", 1)
+          s = s.replace('left: 0, right: 0, top: 0,', 'left: 8, right: 8, top: "42%",')
+          s = s.replace('font: "9px/1.4 ui-monospace, monospace"', 'font: "12px/1.6 ui-monospace, monospace"')
+          s = s.replace('padding: "2px 4px"', 'padding: "8px 10px"')
           io.open(p, "w", encoding="utf-8").write(s)
-          print("SHELL_OK")
+          print("BADGE_OK")
           PY
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: iOS 键盘弹起时按需上抬输入区" || true
+          git commit -m "chore: 读数移到屏幕中部" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
