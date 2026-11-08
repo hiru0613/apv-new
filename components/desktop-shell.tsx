@@ -1089,11 +1089,15 @@ function useIosKeyboardLift() {
     };
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
+    const __pinTimer = window.setInterval(schedule, 250);
+    document.addEventListener("focusin", schedule, true);
     document.addEventListener("focusout", onOut, true);
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
+      window.clearInterval(__pinTimer);
+      document.removeEventListener("focusin", schedule, true);
       document.removeEventListener("focusout", onOut, true);
       root.style.removeProperty("--mobile-keyboard-lift");
     };
