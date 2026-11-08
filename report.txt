@@ -1,0 +1,5 @@
+SYNTAX_OK
+PATCHED components/mixology/mixology-app.tsx (8)
+PATCHED components/settings/worldbook-manager.tsx (7)
+ALL_OK_2
+TSC_READY
