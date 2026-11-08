@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  fix:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -17,25 +17,24 @@ jobs:
         with:
           node-version: 22
 
-      - name: 接共享底座
+      - name: 修分支上的逗号
         run: |
           git config user.name "kong-bot"
           git config user.email "bot@local"
-          git fetch origin dev main
-          git checkout origin/dev -- lib/reading-parser.ts
           python3 - <<'PY'
           import io
-          p = 'app/globals.css'
-          s = io.open(p, encoding='utf-8').read()
-          lines = s.split(chr(10))
-          idx = max(i for i, l in enumerate(lines) if l.startswith('@import'))
-          adds = ['chat-doc-import', 'mix-file-vault', 'worldbook-file-vault']
-          extra = ['@import "../styles/' + a + '.css";' for a in adds if a not in s]
-          io.open(p, 'w', encoding='utf-8').write(chr(10).join(lines[:idx+1] + extra + lines[idx+1:]))
-          print('css added', len(extra))
+          p='middleware.ts'
+          s=io.open(p,encoding='utf-8').read()
+          bad='"/api/tool-proxy,"'
+          good='"/api/tool-proxy",'
+          if bad in s:
+              io.open(p,'w',encoding='utf-8').write(s.replace(bad,good))
+              print('branch fixed')
+          else:
+              print('branch already ok')
           PY
           git add -A
-          git commit -m "chore: 共享底座" || true
+          git commit -m "fix: middleware 逗号位置" || true
           git push origin HEAD:feat/filevault
 
       - name: 安装依赖
@@ -48,3 +47,23 @@ jobs:
           git add tsc.txt
           git commit -m "chore: tsc 结果" || true
           git push origin HEAD:feat/filevault
+
+      - name: 顺手把 main 也修好
+        run: |
+          git fetch origin main
+          git checkout -B fixmw origin/main
+          python3 - <<'PY'
+          import io
+          p='middleware.ts'
+          s=io.open(p,encoding='utf-8').read()
+          bad='"/api/tool-proxy,"'
+          good='"/api/tool-proxy",'
+          if bad in s:
+              io.open(p,'w',encoding='utf-8').write(s.replace(bad,good))
+              print('main fixed')
+          else:
+              print('main already ok')
+          PY
+          git add -A
+          git commit -m "fix: middleware 逗号位置" || true
+          git push origin HEAD:main
