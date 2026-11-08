@@ -1115,6 +1115,13 @@ function useIosKeyboardPin() {
       raf = 0;
       const shell = document.querySelector(".phone-shell-wrap");
       if (!shell) return;
+      const want = Math.round(shell.getBoundingClientRect().height);
+      const deEl = document.documentElement;
+      if (want > 0 && Math.abs(deEl.clientHeight - want) > 2) {
+        deEl.style.height = want + "px";
+        document.body.style.height = want + "px";
+        document.body.style.overflow = "hidden";
+      }
       const shrink = window.innerHeight - vv.height;
       if (shrink < 40) {
         if (current !== 0) {
