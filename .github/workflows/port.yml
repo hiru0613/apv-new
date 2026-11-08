@@ -1,4 +1,4 @@
-name: port-chat
+name: port-mix-wb
 on:
   workflow_dispatch:
 
@@ -15,21 +15,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: install
+        run: npm ci --no-audit --no-fund > npm.txt 2>&1 || echo NPM_FAIL >> npm.txt
       - name: fetch
         run: |
-          curl -sS -m 90 -X POST http://115.159.157.79:8787/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hub_read","arguments":{"path":"tools/patch_filevault.py","maxChars":400000}}}' -o r.json || true
-          curl -sS -m 15 -o /dev/null -w "hub=%{http_code}\n" http://115.159.157.79:8787/health || true
-          ls -l r.json
-          python3 -c "import json;d=json.load(open('r.json'));t=d['result']['content'][0]['text'];open('patch_filevault.py','w').write(t);print('LINES',t.count(chr(10)))"
+          curl -sS -m 90 -X POST http://115.159.157.79:8787/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hub_read","arguments":{"path":"tools/patch_filevault2.py","maxChars":400000}}}' -o r.json || true
+          python3 -c "import json;d=json.load(open('r.json'));t=d['result']['content'][0]['text'];open('patch2.py','w').write(t);print('LINES',t.count(chr(10)))"
       - name: apply
         run: |
-          python3 patch_filevault.py > patch.log 2>&1 || echo PATCH_FAILED >> patch.log
-          cat patch.log
+          python3 -c "import ast;ast.parse(open('patch2.py').read());print('SYNTAX_OK')" > report.txt 2>&1 || true
+          python3 patch2.py >> report.txt 2>&1 || echo PATCH_FAILED >> report.txt
+          cat report.txt
+          test -d node_modules/typescript && echo TSC_READY >> report.txt || echo TSC_MISSING >> report.txt
           npx tsc --noEmit > tsc.txt 2>&1 || true
-          head -30 tsc.txt
-          rm -f r.json
+          head -40 tsc.txt
+          rm -f r.json patch2.py patch_filevault.py
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "feat: chat-room + mascot 接入文件库" || true
+          git commit -m "feat: mixology + worldbook 接入文件库" || true
           git push origin HEAD:feat/filevault
