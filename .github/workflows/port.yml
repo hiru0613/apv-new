@@ -1,7 +1,6 @@
 name: netlify-branch
 on:
   workflow_dispatch:
-
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -15,14 +14,11 @@ jobs:
       - name: probe
         continue-on-error: true
         run: |
-          echo "=== try ===" > netlify.txt
           cat > probe.py <<'PY'
-          import json, traceback, urllib.request, urllib.error
-
+          import json, urllib.request, urllib.error
           TOKEN = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           BASE = "https://api.netlify.com/api/v1"
           SID = "aefc0064-d8ec-4513-876a-7433ae01d0f6"
-
           def call(method, path, body=None):
               data = json.dumps(body).encode() if body is not None else None
               req = urllib.request.Request(BASE + path, data=data, method=method)
@@ -36,53 +32,41 @@ jobs:
                   return e.code, e.read().decode()[:300]
               except Exception as e:
                   return 0, str(e)[:200]
-
-          def branch_of(raw):
+          def br(raw):
               try:
                   return (json.loads(raw).get("build_settings") or {}).get("repo_branch")
               except Exception:
                   return "?"
-
-          FULL = {
-              "cmd": "npm run build",
-              "dir": ".next",
-              "allowed_branches": ["main", "dev"],
-              "installation_id": 171354416,
-              "provider": "github",
-              "repo_type": "git",
-              "repo_url": "https://github.com/hiru0613/apv-new",
-              "repo_path": "hiru0613/apv-new",
-              "repo_branch": "main",
-          }
-
-          attempts = [
-              ("full", {"build_settings": dict(FULL)}),
-              ("full-main-only", {"build_settings": dict(FULL, allowed_branches=["main"])}),
-              ("partial+ids", {"build_settings": {
-                  "repo_branch": "main", "provider": "github",
-                  "repo_path": "hiru0613/apv-new",
-                  "repo_url": "https://github.com/hiru0613/apv-new",
-                  "installation_id": 171354416, "repo_type": "git",
-                  "cmd": "npm run build", "dir": ".next"}}),
-              ("flat", {"repo_branch": "main", "repo_path": "hiru0613/apv-new", "provider": "github"}),
-          ]
-
-          for name, body in attempts:
+          FULL = {"cmd": "npm run build", "dir": ".next", "allowed_branches": ["main", "dev"],
+                  "installation_id": 171354416, "provider": "github", "repo_type": "git",
+                  "repo_url": "https://github.com/hiru0613/apv-new", "repo_path": "hiru0613/apv-new",
+                  "repo_branch": "main"}
+          tries = [("full", {"build_settings": dict(FULL)}),
+                   ("main-only", {"build_settings": dict(FULL, allowed_branches=["main"])}),
+                   ("partial", {"build_settings": {"repo_branch": "main", "provider": "github",
+                     "repo_path": "hiru0613/apv-new", "repo_url": "https://github.com/hiru0613/apv-new",
+                     "installation_id": 171354416, "repo_type": "git", "cmd": "npm run build", "dir": ".next"}}),
+                   ("flat", {"repo_branch": "main", "repo_path": "hiru0613/apv-new", "provider": "github"})]
+          for name, body in tries:
               st, raw = call("PATCH", "/sites/" + SID, body)
-              print("%-14s patch=%s resp_branch=%s" % (name, st, branch_of(raw)), flush=True)
-              if st >= 400:
-                  print("   err:", raw[:200], flush=True)
+              print(name, "patch=", st, "resp=", br(raw), flush=True)
               st2, raw2 = call("GET", "/sites/" + SID)
-              print("   get_branch=%s" % branch_of(raw2), flush=True)
-              if branch_of(raw2) == "main":
+              print("  get=", br(raw2), flush=True)
+              if br(raw2) == "main":
                   print("CHANGED_BY", name, flush=True)
                   break
-
           st, raw = call("GET", "/sites/" + SID)
-          print("FINAL", branch_of(raw), flush=True)
+          print("FINAL", br(raw), flush=True)
           st, raw = call("POST", "/sites/" + SID + "/builds?clear_cache=false", {})
           print("BUILD", st, raw[:200], flush=True)
-
           PY
-          python3 probe.py >> netlify.txt 2>&1 || true
-      -
+          python3 probe.py > netlify.txt 2>&1 || true
+      - name: save
+        if: always()
+        run: |
+          rm -f probe.py
+          git config user.name "kong-bot"
+          git config user.email "bot@local"
+          git add netlify.txt
+          git commit -m "chore: netlify 分支探测 v3" || true
+          git push origin HEAD:main
