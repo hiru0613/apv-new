@@ -1,0 +1,29 @@
+name: port-filevault
+on:
+  workflow_dispatch:
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置 git
+        run: |
+          git config user.name "kong-bot"
+          git config user.email "bot@local"
+
+      - name: 把 dev 合到最新 main 上
+        run: |
+          git fetch origin dev
+          git fetch origin main
+          git checkout -B feat/filevault origin/main
+          echo "=== 开始合并 ==="
+          git merge origin/dev --no-edit || echo "MERGE_CONFLICT"
+          echo "=== 冲突文件 ==="
+          git diff --name-only --diff-filter=U || true
+          git push origin feat/filevault --force
