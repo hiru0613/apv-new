@@ -1,4 +1,4 @@
-name: port-mix-wb
+name: fix-ios-viewport
 on:
   workflow_dispatch:
 
@@ -19,19 +19,18 @@ jobs:
         run: npm ci --no-audit --no-fund > npm.txt 2>&1 || echo NPM_FAIL >> npm.txt
       - name: fetch
         run: |
-          curl -sS -m 90 -X POST http://115.159.157.79:8787/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hub_read","arguments":{"path":"tools/patch_filevault2.py","maxChars":400000}}}' -o r.json || true
-          python3 -c "import json;d=json.load(open('r.json'));t=d['result']['content'][0]['text'];open('patch2.py','w').write(t);print('LINES',t.count(chr(10)))"
+          curl -sS -m 90 -X POST http://115.159.157.79:8787/mcp -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hub_read","arguments":{"path":"tools/patch_filevault3.py","maxChars":400000}}}' -o r.json || true
+          python3 -c "import json;d=json.load(open('r.json'));t=d['result']['content'][0]['text'];open('patch3.py','w').write(t);print('LINES',t.count(chr(10)))"
       - name: apply
         run: |
-          python3 -c "import ast;ast.parse(open('patch2.py').read());print('SYNTAX_OK')" > report.txt 2>&1 || true
-          python3 patch2.py >> report.txt 2>&1 || echo PATCH_FAILED >> report.txt
+          python3 -c "import ast;ast.parse(open('patch3.py').read());print('SYNTAX_OK')" > report.txt 2>&1 || true
+          python3 patch3.py >> report.txt 2>&1 || echo PATCH_FAILED >> report.txt
           cat report.txt
           test -d node_modules/typescript && echo TSC_READY >> report.txt || echo TSC_MISSING >> report.txt
           npx tsc --noEmit > tsc.txt 2>&1 || true
-          head -40 tsc.txt
-          rm -f r.json patch2.py patch_filevault.py
+          rm -f r.json patch3.py
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "feat: mixology + worldbook 接入文件库" || true
+          git commit -m "fix: iOS 键盘收起后视口偏移未复位" || true
           git push origin HEAD:feat/filevault
