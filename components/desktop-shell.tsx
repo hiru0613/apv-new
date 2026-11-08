@@ -1014,6 +1014,44 @@ function useAndroidCaretKeyboardLift() {
   }, []);
 }
 
+/**
+ * iOS 键盘收起后，Safari 有时不会把 visualViewport 的偏移复位：整页被系统往上推
+ * 一截，表现就是「顶部标题被切、底部露一条底色」。应用是 overflow:hidden 的固定
+ * 布局，页面自己没法滚回去，只能手动复位。
+ * 判据：可视高度已回到接近整屏、但 offsetTop 仍不为 0 —— 说明键盘已收起、偏移残留。
+ */
+function useIosViewportPanReset() {
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (/Android/i.test(navigator.userAgent)) return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    let timer = 0;
+    const reset = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const shrunk = viewport.height < window.innerHeight - 40;
+        if (shrunk) return;
+        if (viewport.offsetTop === 0 && window.scrollY === 0) return;
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }, 140);
+    };
+
+    viewport.addEventListener("resize", reset);
+    viewport.addEventListener("scroll", reset);
+    document.addEventListener("focusout", reset, true);
+    return () => {
+      window.clearTimeout(timer);
+      viewport.removeEventListener("resize", reset);
+      viewport.removeEventListener("scroll", reset);
+      document.removeEventListener("focusout", reset, true);
+    };
+  }, []);
+}
+
 type MusicOverlayController = {
   closeFullPlayer: () => void;
 };
@@ -1045,6 +1083,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     musicOverlayControllerRef.current = controller;
   }, []);
   useAndroidCaretKeyboardLift();
+  useIosViewportPanReset();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [layout, setLayout] = useState<DesktopLayout>(DEFAULT_LAYOUT);
   // Dock is an ordered icon-id list (max DOCK_MAX), kept disjoint from `layout`.
