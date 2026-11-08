@@ -1,4 +1,4 @@
-name: vp-always
+name: ios-lift
 on:
   workflow_dispatch:
 jobs:
@@ -11,67 +11,71 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: add
+      - name: patch
         run: |
-          cat > components/viewport-debug-badge.tsx <<'TSX'
-          "use client";
-          import { useEffect, useState } from "react";
-          export function ViewportDebugBadge() {
-            const [info, setInfo] = useState("");
-            useEffect(() => {
-              const tick = () => {
-                const vv = window.visualViewport;
-                const de = document.documentElement;
-                const root = document.querySelector<HTMLElement>(".app-root");
-                const shell = document.querySelector<HTMLElement>(".phone-shell-wrap");
-                const bar = document.querySelector<HTMLElement>(".chat-input-bar");
-                const r = shell ? shell.getBoundingClientRect() : null;
-                const rr = root ? root.getBoundingClientRect() : null;
-                const br = bar ? bar.getBoundingClientRect() : null;
-                setInfo(
-                  `p=${location.pathname} ih=${window.innerHeight} vv=${Math.round(vv?.height ?? 0)}/${Math.round(vv?.offsetTop ?? 0)}`
-                  + ` sy=${Math.round(window.scrollY)} de=${de.clientHeight} dh=${de.scrollHeight}`
-                  + ` root=${Math.round(rr?.height ?? 0)}@${Math.round(rr?.top ?? 0)}`
-                  + ` shell=${Math.round(r?.height ?? 0)}@${Math.round(r?.top ?? 0)}`
-                  + ` bar=${Math.round(br?.bottom ?? 0)}`
-                  + ` gap=${Math.round(window.innerHeight - (r?.bottom ?? 0))}`
-                );
-              };
-              tick();
-              const id = window.setInterval(tick, 500);
-              window.addEventListener("resize", tick);
-              window.visualViewport?.addEventListener("resize", tick);
-              window.visualViewport?.addEventListener("scroll", tick);
-              return () => {
-                window.clearInterval(id);
-                window.removeEventListener("resize", tick);
-                window.visualViewport?.removeEventListener("resize", tick);
-                window.visualViewport?.removeEventListener("scroll", tick);
-              };
-            }, []);
-            return (
-              <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2147483647, background: "rgba(0,0,0,0.9)", color: "#7ff", font: "9px/1.4 ui-monospace, monospace", padding: "2px 4px", pointerEvents: "none" }}>
-                {info}
-              </div>
-            );
-          }
-          TSX
-          sed -i '/ViewportDebugBadge/d' app/layout.tsx || true
+          sed -i 's/bottom: 0, zIndex: 2147483647/top: 0, zIndex: 2147483647/' components/viewport-debug-badge.tsx
           python3 - <<'PY'
           import io
-          p = "app/layout.tsx"
+          p = "components/desktop-shell.tsx"
           s = io.open(p, encoding="utf-8").read()
-          s = s.replace('import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-visibility-controller";',
-                        'import { ChatReasoningVisibilityController } from "@/components/chat-reasoning-visibility-controller";\nimport { ViewportDebugBadge } from "@/components/viewport-debug-badge";')
-          s = s.replace("        <ChatReasoningVisibilityController />",
-                        "        <ChatReasoningVisibilityController />\n        <ViewportDebugBadge />")
+          HOOK = '''function useIosKeyboardLift() {
+            useEffect(() => {
+              if (typeof window === "undefined" || typeof document === "undefined") return;
+              if (/Android/i.test(navigator.userAgent)) return;
+              const vv = window.visualViewport;
+              if (!vv) return;
+              const root = document.documentElement;
+              let lift = 0;
+              let raf = 0;
+              const apply = (next) => {
+                const v = Math.max(0, Math.round(next));
+                if (Math.abs(v - lift) < 2) return;
+                lift = v;
+                if (v > 0) root.style.setProperty("--mobile-keyboard-lift", v + "px");
+                else root.style.removeProperty("--mobile-keyboard-lift");
+              };
+              const run = () => {
+                raf = 0;
+                const shrink = window.innerHeight - vv.height;
+                const bar = document.querySelector(".chat-input-bar");
+                if (!bar || shrink < 40) {
+                  apply(0);
+                  return;
+                }
+                const rect = bar.getBoundingClientRect();
+                const visibleBottom = vv.offsetTop + vv.height;
+                const need = rect.bottom + lift - visibleBottom;
+                apply(need > 0 ? Math.min(need, shrink + 120) : 0);
+              };
+              const schedule = () => {
+                if (!raf) raf = window.requestAnimationFrame(run);
+              };
+              const onOut = () => {
+                window.setTimeout(schedule, 80);
+              };
+              vv.addEventListener("resize", schedule);
+              vv.addEventListener("scroll", schedule);
+              document.addEventListener("focusout", onOut, true);
+              return () => {
+                if (raf) window.cancelAnimationFrame(raf);
+                vv.removeEventListener("resize", schedule);
+                vv.removeEventListener("scroll", schedule);
+                document.removeEventListener("focusout", onOut, true);
+                root.style.removeProperty("--mobile-keyboard-lift");
+              };
+            }, []);
+          }
+
+          '''
+          s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
+          s = s.replace("  useAndroidCaretKeyboardLift();", "  useAndroidCaretKeyboardLift();\n  useIosKeyboardLift();", 1)
           io.open(p, "w", encoding="utf-8").write(s)
-          print("LAYOUT_OK")
+          print("SHELL_OK")
           PY
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "chore: 常显视口读数" || true
+          git commit -m "fix: iOS 键盘弹起时按需上抬输入区" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
@@ -91,15 +95,15 @@ jobs:
                   with urllib.request.urlopen(r, timeout=90) as x:
                       return x.status, x.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:300]
+                  return e.code, e.read().decode()[:200]
               except Exception as e:
                   return 0, str(e)[:200]
           time.sleep(5)
           st, raw = call("POST", "/sites/" + S + "/builds?branch=main", {})
-          print("BUILD", st, flush=True)
           try:
               bid = json.loads(raw)["id"]
           except Exception:
+              print("NO_BUILD", st, raw[:120], flush=True)
               raise SystemExit(0)
           dep = None
           for i in range(40):
@@ -111,18 +115,12 @@ jobs:
                   continue
               dep = d.get("deploy_id") or dep
               if d.get("done"):
-                  print("DONE", i, flush=True)
+                  print("DONE", i, d.get("error"), flush=True)
                   break
           if not dep:
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
           print("RESTORE", st, flush=True)
-          st, raw = call("GET", "/sites/" + S)
-          try:
-              pd = (json.loads(raw).get("published_deploy") or {})
-              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], flush=True)
-          except Exception:
-              print("READFAIL", flush=True)
           PY
           python3 pub.py > cleanup.txt 2>&1 || true
           cat cleanup.txt
