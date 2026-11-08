@@ -34,7 +34,7 @@ export function ViewportDebugBadge() {
     };
   }, []);
   return (
-    <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2147483647, background: "rgba(0,0,0,0.9)", color: "#7ff", font: "9px/1.4 ui-monospace, monospace", padding: "2px 4px", pointerEvents: "none" }}>
+    <div style={{ position: "fixed", left: 0, right: 0, top: 0, zIndex: 2147483647, background: "rgba(0,0,0,0.9)", color: "#7ff", font: "9px/1.4 ui-monospace, monospace", padding: "2px 4px", pointerEvents: "none" }}>
       {info}
     </div>
   );

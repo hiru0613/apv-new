@@ -1052,6 +1052,54 @@ function useIosViewportPanReset() {
   }, []);
 }
 
+function useIosKeyboardLift() {
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (/Android/i.test(navigator.userAgent)) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    let lift = 0;
+    let raf = 0;
+    const apply = (next) => {
+      const v = Math.max(0, Math.round(next));
+      if (Math.abs(v - lift) < 2) return;
+      lift = v;
+      if (v > 0) root.style.setProperty("--mobile-keyboard-lift", v + "px");
+      else root.style.removeProperty("--mobile-keyboard-lift");
+    };
+    const run = () => {
+      raf = 0;
+      const shrink = window.innerHeight - vv.height;
+      const bar = document.querySelector(".chat-input-bar");
+      if (!bar || shrink < 40) {
+        apply(0);
+        return;
+      }
+      const rect = bar.getBoundingClientRect();
+      const visibleBottom = vv.offsetTop + vv.height;
+      const need = rect.bottom + lift - visibleBottom;
+      apply(need > 0 ? Math.min(need, shrink + 120) : 0);
+    };
+    const schedule = () => {
+      if (!raf) raf = window.requestAnimationFrame(run);
+    };
+    const onOut = () => {
+      window.setTimeout(schedule, 80);
+    };
+    vv.addEventListener("resize", schedule);
+    vv.addEventListener("scroll", schedule);
+    document.addEventListener("focusout", onOut, true);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      vv.removeEventListener("resize", schedule);
+      vv.removeEventListener("scroll", schedule);
+      document.removeEventListener("focusout", onOut, true);
+      root.style.removeProperty("--mobile-keyboard-lift");
+    };
+  }, []);
+}
+
 type MusicOverlayController = {
   closeFullPlayer: () => void;
 };
@@ -1083,6 +1131,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     musicOverlayControllerRef.current = controller;
   }, []);
   useAndroidCaretKeyboardLift();
+  useIosKeyboardLift();
   useIosViewportPanReset();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [layout, setLayout] = useState<DesktopLayout>(DEFAULT_LAYOUT);
