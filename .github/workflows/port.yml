@@ -1,4 +1,4 @@
-name: netlify-branch
+name: netlify-publish-main
 on:
   workflow_dispatch:
 jobs:
@@ -15,7 +15,7 @@ jobs:
         continue-on-error: true
         run: |
           cat > probe.py <<'PY'
-          import json, urllib.request, urllib.error
+          import json, time, urllib.request, urllib.error
           TOKEN = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           BASE = "https://api.netlify.com/api/v1"
           SID = "aefc0064-d8ec-4513-876a-7433ae01d0f6"
@@ -26,41 +26,44 @@ jobs:
               req.add_header("Content-Type", "application/json")
               req.add_header("User-Agent", "kong-bot")
               try:
-                  with urllib.request.urlopen(req, timeout=60) as r:
+                  with urllib.request.urlopen(req, timeout=90) as r:
                       return r.status, r.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:300]
+                  return e.code, e.read().decode()[:400]
               except Exception as e:
                   return 0, str(e)[:200]
-          def br(raw):
+          st, raw = call("POST", "/sites/" + SID + "/builds?branch=main&clear_cache=true", {})
+          print("START", st, raw[:300], flush=True)
+          try:
+              build_id = json.loads(raw)["id"]
+          except Exception:
+              print("NO_BUILD_ID", flush=True)
+              raise SystemExit(0)
+          deploy_id = None
+          for i in range(45):
+              time.sleep(10)
+              st, raw = call("GET", "/sites/" + SID + "/builds/" + build_id)
               try:
-                  return (json.loads(raw).get("build_settings") or {}).get("repo_branch")
+                  d = json.loads(raw)
               except Exception:
-                  return "?"
-          FULL = {"cmd": "npm run build", "dir": ".next", "allowed_branches": ["main", "dev"],
-                  "installation_id": 171354416, "provider": "github", "repo_type": "git",
-                  "repo_url": "https://github.com/hiru0613/apv-new", "repo_path": "hiru0613/apv-new",
-                  "repo_branch": "main"}
-          tries = [("full", {"build_settings": dict(FULL)}),
-                   ("main-only", {"build_settings": dict(FULL, allowed_branches=["main"])}),
-                   ("partial", {"build_settings": {"repo_branch": "main", "provider": "github",
-                     "repo_path": "hiru0613/apv-new", "repo_url": "https://github.com/hiru0613/apv-new",
-                     "installation_id": 171354416, "repo_type": "git", "cmd": "npm run build", "dir": ".next"}}),
-                   ("flat", {"repo_branch": "main", "repo_path": "hiru0613/apv-new", "provider": "github"})]
-          for name, body in tries:
-              st, raw = call("PATCH", "/sites/" + SID, body)
-              print(name, "patch=", st, "resp=", br(raw), flush=True)
-              st2, raw2 = call("GET", "/sites/" + SID)
-              print("  get=", br(raw2), flush=True)
-              if br(raw2) == "main":
-                  print("CHANGED_BY", name, flush=True)
+                  print("poll", i, st, raw[:120], flush=True)
+                  continue
+              deploy_id = d.get("deploy_id") or deploy_id
+              print("poll", i, "done=", d.get("done"), "err=", d.get("error"), "deploy=", deploy_id, flush=True)
+              if d.get("done"):
                   break
+          if not deploy_id:
+              print("NO_DEPLOY_ID", flush=True)
+              raise SystemExit(0)
+          st, raw = call("POST", "/sites/" + SID + "/deploys/" + deploy_id + "/restore", {})
+          print("RESTORE", st, raw[:300], flush=True)
           st, raw = call("GET", "/sites/" + SID)
-          print("FINAL", br(raw), flush=True)
-          st, raw = call("POST", "/sites/" + SID + "/builds?clear_cache=false", {})
-          print("BUILD", st, raw[:200], flush=True)
-          PY
-          python3 probe.py > netlify.txt 2>&1 || true
+          try:
+              d = json.loads(raw)
+              pd = d.get("published_deploy") or {}
+              print("LIVE branch=", pd.get("branch"), "sha=", str(pd.get("commit_ref"))[:10], "at=", pd.get("published_at"), flush=True)
+          except Exception:
+              print("READBACK_FAIL", flush=True)
       - name: save
         if: always()
         run: |
@@ -68,5 +71,5 @@ jobs:
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add netlify.txt
-          git commit -m "chore: netlify 分支探测 v3" || true
+          git commit -m "chore: netlify 发布 main" || true
           git push origin HEAD:main
