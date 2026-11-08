@@ -1,4 +1,4 @@
-name: ios-pin2
+name: fit-height
 on:
   workflow_dispatch:
 jobs:
@@ -14,29 +14,33 @@ jobs:
       - name: patch
         run: |
           python3 - <<'PY'
-          import io, re
+          import io
           p = "components/desktop-shell.tsx"
           s = io.open(p, encoding="utf-8").read()
-          if "setInterval(schedule, 250)" in s:
+          if "fitHeights" in s:
               print("ALREADY")
               raise SystemExit(0)
-          s, n1 = re.subn(r'(\n(\s*)vv\.addEventListener\("scroll", schedule\);)',
-                          r'\1\n\2const __pinTimer = window.setInterval(schedule, 250);\n\2document.addEventListener("focusin", schedule, true);',
-                          s, count=1)
-          s, n2 = re.subn(r'(\n(\s*)vv\.removeEventListener\("scroll", schedule\);)',
-                          r'\1\n\2window.clearInterval(__pinTimer);\n\2document.removeEventListener("focusin", schedule, true);',
-                          s, count=1)
-          print("SUBST", n1, n2)
-          if n1 != 1 or n2 != 1:
-              raise SystemExit("REGEX_MISS")
+          old = 'const shell = document.querySelector(".phone-shell-wrap");\n              if (!shell) return;'
+          new = ('const shell = document.querySelector(".phone-shell-wrap");\n'
+                 '              if (!shell) return;\n'
+                 '              const want = Math.round(shell.getBoundingClientRect().height);\n'
+                 '              const de = document.documentElement;\n'
+                 '              if (want > 0 && Math.abs(de.clientHeight - want) > 2) {\n'
+                 '                de.style.height = want + "px";\n'
+                 '                document.body.style.height = want + "px";\n'
+                 '                document.body.style.overflow = "hidden";\n'
+                 '              }')
+          if s.count(old) != 1:
+              raise SystemExit("ANCHOR_MISS")
+          s = s.replace(old, (new + " /* fitHeights */").replace("/* fitHeights */", ""), 1)
           io.open(p, "w", encoding="utf-8").write(s)
-          print("PIN_OK")
+          print("FIT_OK")
           PY
-          grep -n "setInterval(schedule, 250)" components/desktop-shell.tsx
+          grep -n "const want = Math.round" components/desktop-shell.tsx
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: 键盘上抬改为轮询触发" || true
+          git commit -m "fix: 页面高度跟随外壳，消掉底部 62px 露底" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
