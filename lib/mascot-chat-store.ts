@@ -480,22 +480,27 @@ export function stopMascotGeneration() {
 export async function appendMascotMessage({
     text,
     images = [],
+    displayText,
 }: {
     text: string;
     images?: string[];
+    /** 只影响 UI 显示，不影响发给模型的 text —— 给「文件卡」这类
+     *  「正文很长但气泡只该显示一行摘要」的场景用。 */
+    displayText?: string;
 }): Promise<boolean> {
     await hydrateMascotChat();
     const trimmed = text.trim();
     if ((!trimmed && images.length === 0) || isThinking) return false;
 
+    const shown = typeof displayText === "string" ? displayText.trim() : "";
     const userMsg: MascotMsg = images.length > 0
-        ? { role: "user", text: trimmed, images, createdAt: new Date().toISOString() }
-        : { role: "user", text: trimmed, createdAt: new Date().toISOString() };
+        ? { role: "user", text: trimmed, images, ...(shown ? { displayText: shown } : {}), createdAt: new Date().toISOString() }
+        : { role: "user", text: trimmed, ...(shown ? { displayText: shown } : {}), createdAt: new Date().toISOString() };
     const shouldAutoTitle = !messages.some((msg) => msg.role === "user");
     const workingMessages = normalizeMessages([...messages, userMsg]);
     if (shouldAutoTitle && activeSessionId) {
         sessions = sessions.map((session) => session.id === activeSessionId
-            ? { ...session, title: autoMascotSessionTitle(trimmed || "（图片）") }
+            ? { ...session, title: autoMascotSessionTitle(shown || trimmed || "（图片）") }
             : session);
     }
     publishMessages(workingMessages);
@@ -721,13 +726,16 @@ export async function generateMascotReply({
 export async function sendMascotMessage({
     text,
     images = [],
+    displayText,
     context = getMascotContext(),
 }: {
     text: string;
     images?: string[];
+    /** 只影响 UI 显示的摘要（见 appendMascotMessage） */
+    displayText?: string;
     context?: MascotPageContext;
 }): Promise<void> {
-    const accepted = await appendMascotMessage({ text, images });
+    const accepted = await appendMascotMessage({ text, images, displayText });
     if (accepted) await generateMascotReply({ context });
 }
 
