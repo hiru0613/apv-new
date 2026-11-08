@@ -1,4 +1,4 @@
-name: deploy-original
+name: deploy-legacy
 on:
   workflow_dispatch:
 jobs:
@@ -11,14 +11,14 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: fetch-original
+      - name: fetch-legacy
         run: |
           git config user.name "kong-bot"
           git config user.email "bot@local"
-          git remote add up https://github.com/xiaolongbao0709/ai-virtual-phone.git
-          git fetch --depth=1 up main
-          git checkout -B original FETCH_HEAD
-          git push -f origin original
+          git remote add old https://github.com/hiru0613/ai-virtual-phone0613.git
+          git fetch --depth=1 old main
+          git checkout -B legacy FETCH_HEAD
+          git push -f origin legacy
           git log -1 --oneline
       - name: build-and-publish
         continue-on-error: true
@@ -41,14 +41,14 @@ jobs:
                   return e.code, e.read().decode()[:300]
               except Exception as e:
                   return 0, str(e)[:200]
-          st, raw = call("POST", "/sites/" + S + "/builds?branch=original", {})
+          st, raw = call("POST", "/sites/" + S + "/builds?branch=legacy", {})
           print("BUILD", st, raw[:200], flush=True)
           try:
               bid = json.loads(raw)["id"]
           except Exception:
               raise SystemExit(0)
           dep = None
-          for i in range(45):
+          for i in range(50):
               time.sleep(10)
               st, raw = call("GET", "/sites/" + S + "/builds/" + bid)
               try:
@@ -60,6 +60,7 @@ jobs:
                   print("DONE", i, d.get("error"), flush=True)
                   break
           if not dep:
+              print("NO_DEPLOY", flush=True)
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
           print("RESTORE", st, raw[:150], flush=True)
