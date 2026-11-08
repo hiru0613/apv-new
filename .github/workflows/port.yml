@@ -17,53 +17,39 @@ jobs:
         with:
           node-version: 22
 
-      - name: 修分支上的逗号
-        run: |
-          git config user.name "kong-bot"
-          git config user.email "bot@local"
-          python3 - <<'PY'
-          import io
-          p='middleware.ts'
-          s=io.open(p,encoding='utf-8').read()
-          bad='"/api/tool-proxy,"'
-          good='"/api/tool-proxy",'
-          if bad in s:
-              io.open(p,'w',encoding='utf-8').write(s.replace(bad,good))
-              print('branch fixed')
-          else:
-              print('branch already ok')
-          PY
-          git add -A
-          git commit -m "fix: middleware 逗号位置" || true
-          git push origin HEAD:feat/filevault
-
       - name: 安装依赖
         run: npm ci --no-audit --no-fund
 
-      - name: 类型检查
+      - name: 自动补依赖并反复编译
         run: |
-          npx tsc --noEmit > tsc.txt 2>&1 || true
-          head -60 tsc.txt
-          git add tsc.txt
-          git commit -m "chore: tsc 结果" || true
-          git push origin HEAD:feat/filevault
-
-      - name: 顺手把 main 也修好
-        run: |
-          git fetch origin main
-          git checkout -B fixmw origin/main
+          git config user.name "kong-bot"
+          git config user.email "bot@local"
+          git fetch origin dev
           python3 - <<'PY'
-          import io
-          p='middleware.ts'
-          s=io.open(p,encoding='utf-8').read()
-          bad='"/api/tool-proxy,"'
-          good='"/api/tool-proxy",'
-          if bad in s:
-              io.open(p,'w',encoding='utf-8').write(s.replace(bad,good))
-              print('main fixed')
-          else:
-              print('main already ok')
+          import io, re, subprocess
+          for i in range(8):
+              subprocess.run("npx tsc --noEmit > tsc.txt 2>&1", shell=True)
+              s = io.open("tsc.txt", encoding="utf-8", errors="ignore").read()
+              m = re.search(r"Cannot find module '(\./[^']+)'", s)
+              if not m:
+                  print("NO_MISSING_MODULE")
+                  break
+              mod = m.group(1)
+              name = mod.split("/")[-1]
+              done = False
+              for cand in ["lib/" + name + ".ts", name + ".ts"]:
+                  r = subprocess.run(["git", "cat-file", "-e", "origin/dev:" + cand])
+                  if r.returncode == 0:
+                      subprocess.run(["git", "checkout", "origin/dev", "--", cand])
+                      print("copied", cand)
+                      done = True
+                      break
+              if not done:
+                  print("CANNOT_RESOLVE", mod)
+                  break
+          print("---- tsc ----")
+          print(io.open("tsc.txt", encoding="utf-8", errors="ignore").read()[:3000])
           PY
           git add -A
-          git commit -m "fix: middleware 逗号位置" || true
-          git push origin HEAD:main
+          git commit -m "chore: 自动补依赖 + tsc" || true
+          git push origin HEAD:feat/filevault
