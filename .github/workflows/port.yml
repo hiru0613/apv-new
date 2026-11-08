@@ -1,4 +1,4 @@
-name: badge-center
+name: ios-pin
 on:
   workflow_dispatch:
 jobs:
@@ -15,18 +15,77 @@ jobs:
         run: |
           python3 - <<'PY'
           import io
+          p = "components/desktop-shell.tsx"
+          s = io.open(p, encoding="utf-8").read()
+          HOOK = '''function useIosKeyboardPin() {
+            useEffect(() => {
+              if (typeof window === "undefined" || typeof document === "undefined") return;
+              const vv = window.visualViewport;
+              if (!vv) return;
+              let raf = 0;
+              let current = 0;
+              const run = () => {
+                raf = 0;
+                const shell = document.querySelector(".phone-shell-wrap");
+                if (!shell) return;
+                const shrink = window.innerHeight - vv.height;
+                if (shrink < 40) {
+                  if (current !== 0) {
+                    current = 0;
+                    shell.style.transform = "";
+                  }
+                  return;
+                }
+                const bar = document.querySelector(".chat-input-bar");
+                if (!bar) return;
+                const visibleBottom = vv.offsetTop + vv.height;
+                const base = bar.getBoundingClientRect().bottom + current;
+                const need = base - visibleBottom;
+                const next = need > 4 ? Math.round(need) : 0;
+                if (Math.abs(next - current) < 2) return;
+                current = next;
+                shell.style.transform = next > 0 ? "translate3d(0,-" + next + "px,0)" : "";
+              };
+              const schedule = () => {
+                if (!raf) raf = window.requestAnimationFrame(run);
+              };
+              const onOut = () => {
+                window.setTimeout(schedule, 100);
+              };
+              vv.addEventListener("resize", schedule);
+              vv.addEventListener("scroll", schedule);
+              document.addEventListener("focusout", onOut, true);
+              return () => {
+                if (raf) window.cancelAnimationFrame(raf);
+                vv.removeEventListener("resize", schedule);
+                vv.removeEventListener("scroll", schedule);
+                document.removeEventListener("focusout", onOut, true);
+              };
+            }, []);
+          }
+
+          '''
+          s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
+          s = s.replace("  useIosViewportPanReset();", "  useIosViewportPanReset();\n  useIosKeyboardPin();", 1)
+          io.open(p, "w", encoding="utf-8").write(s)
+          print("SHELL_OK")
+          PY
+          python3 - <<'PY'
+          import io
           p = "components/viewport-debug-badge.tsx"
           s = io.open(p, encoding="utf-8").read()
-          s = s.replace('left: 0, right: 0, top: 0,', 'left: 8, right: 8, top: "42%",')
-          s = s.replace('font: "9px/1.4 ui-monospace, monospace"', 'font: "12px/1.6 ui-monospace, monospace"')
-          s = s.replace('padding: "2px 4px"', 'padding: "8px 10px"')
+          old = "                  + ` gap=${Math.round(window.innerHeight - (r?.bottom ?? 0))}`"
+          new = old + "\n                  + ` sa=${(navigator as any).standalone ? 1 : 0} tf=${shell?.style.transform || \"-\"}`"
+          if s.count(old) != 1:
+              raise SystemExit("BAD_BADGE_ANCHOR")
+          s = s.replace(old, new)
           io.open(p, "w", encoding="utf-8").write(s)
           print("BADGE_OK")
           PY
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "chore: 读数移到屏幕中部" || true
+          git commit -m "fix: 键盘上抬改为直接写 inline transform" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
@@ -35,7 +94,7 @@ jobs:
           import json, time, urllib.request, urllib.error
           T = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           B = "https://api.netlify.com/api/v1"
-          S = "aefc0064-d8ec-4513-876a-7433ae01d0f6"
+          S = "aefc0064-d8ec-4516-876a-7433ae01d0f6"
           def call(m, p, body=None):
               d = json.dumps(body).encode() if body is not None else None
               r = urllib.request.Request(B + p, data=d, method=m)
