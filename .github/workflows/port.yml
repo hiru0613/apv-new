@@ -19,12 +19,12 @@ jobs:
           git fetch origin dev main
           git checkout -B work origin/main
           rm -f result.txt
-          if git merge origin/dev --no-edit; then
+          if git merge origin/dev --allow-unrelated-histories --no-edit; then
             echo "MERGED_OK" > result.txt
           else
             echo "CONFLICT" > result.txt
             git diff --name-only --diff-filter=U >> result.txt
-            git merge --abort
+            git merge --abort || true
             git checkout -B work origin/main
           fi
           cat result.txt
