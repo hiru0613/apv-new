@@ -1,13 +1,10 @@
-=== env ===
-Python 3.12.3
-LIST 200 [{"id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","site_id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","plan":"nf_team_dev","ssl_plan":null,"premium":false,"claimed":true,"name":"hiru0613","custom_domain":null,"branch_deploy_custom_domain":null,"deploy_previ
-SITE aefc0064-d8ec-4513-876a-7433ae01d0f6 hiru0613 http://hiru0613.netlify.app
-BEFORE dev
-PATCH1 200 {"id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","site_id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","plan":"nf_team_dev","ssl_plan":null,"premium":false,"claimed":true,"name":"hiru0613","custom_domain":null
-  now= dev
-PATCH2 200 {"id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","site_id":"aefc0064-d8ec-4513-876a-7433ae01d0f6","plan":"nf_team_dev","ssl_plan":null,"premium":false,"claimed":true,"name":"hiru0613","custom_domain":null
-  now= dev
-PATCH3 422 {"errors":{"path":["is invalid"]}}
-  now= dev
-BUILD 200 {"id":"6af00bf4df3383c95c419c3a","deploy_id":"6af00bf4df3383c95c419c3c","sha":null,"done":false,"error":null,"created_at":"2026-11-08T05:43:16.339Z","deploy_state":"new","deploy_pending_review_reason":"","strict_contributor_verification_failure":false}
-=== done ===
+full patch= 200 resp= dev
+  get= dev
+main-only patch= 200 resp= dev
+  get= dev
+partial patch= 200 resp= dev
+  get= dev
+flat patch= 200 resp= dev
+  get= dev
+FINAL dev
+BUILD 200 {"id":"6af00d4edde1bfd88aeb9b56","deploy_id":"6af00d4edde1bfd88aeb9b58","sha":null,"done":false,"error":null,"created_at":"2026-11-08T05:49:02.686Z","deploy_state":"new","deploy_pending_review_reason"
