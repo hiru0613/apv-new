@@ -17,6 +17,9 @@ jobs:
           import io
           p = "components/desktop-shell.tsx"
           s = io.open(p, encoding="utf-8").read()
+          if "useIosKeyboardPin" in s:
+              print("ALREADY_THERE")
+              raise SystemExit(0)
           HOOK = '''function useIosKeyboardPin() {
             useEffect(() => {
               if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -65,19 +68,16 @@ jobs:
           }
 
           '''
-          if "useIosKeyboardPin" in s:
-              print("ALREADY_THERE")
-              raise SystemExit(0)
           s = s.replace("type MusicOverlayController = {", HOOK + "type MusicOverlayController = {", 1)
           s = s.replace("  useIosViewportPanReset();", "  useIosViewportPanReset();\n  useIosKeyboardPin();", 1)
           io.open(p, "w", encoding="utf-8").write(s)
           print("SHELL_OK")
           PY
-          grep -c "useIosKeyboardPin" components/desktop-shell.tsx
+          grep -c useIosKeyboardPin components/desktop-shell.tsx
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: 键盘上抬改为直接写 inline transform" || true
+          git commit -m "fix: 键盘上抬改为 inline transform" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
