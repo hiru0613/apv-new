@@ -1,4 +1,4 @@
-name: fit-height2
+name: cleanup-final
 on:
   workflow_dispatch:
 jobs:
@@ -11,39 +11,14 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: patch
+      - name: clean
         run: |
-          python3 - <<'PY'
-          import io, re
-          p = "components/desktop-shell.tsx"
-          s = io.open(p, encoding="utf-8").read()
-          print("count_shell_guard", s.count("if (!shell) return;"))
-          if "getBoundingClientRect().height" in s and "de.style.height" in s:
-              print("ALREADY")
-              raise SystemExit(0)
-          pat = re.compile(r'(\n)(\s*)(const shell = document\.querySelector\("\.phone-shell-wrap"\);\n\s*if \(!shell\) return;)')
-          m = pat.search(s)
-          if not m:
-              print("NO_MATCH")
-              raise SystemExit(1)
-          ind = m.group(2)
-          block = (m.group(3) + "\n"
-                   + ind + 'const want = Math.round(shell.getBoundingClientRect().height);\n'
-                   + ind + 'const deEl = document.documentElement;\n'
-                   + ind + 'if (want > 0 && Math.abs(deEl.clientHeight - want) > 2) {\n'
-                   + ind + '  deEl.style.height = want + "px";\n'
-                   + ind + '  document.body.style.height = want + "px";\n'
-                   + ind + '  document.body.style.overflow = "hidden";\n'
-                   + ind + '}')
-          s = s[:m.start(3)] + block + s[m.end(3):]
-          io.open(p, "w", encoding="utf-8").write(s)
-          print("FIT_OK")
-          PY
-          grep -n "const want = Math.round" components/desktop-shell.tsx
+          git rm -f components/viewport-debug-badge.tsx netlify.txt npm.txt tsc.txt report.txt cleanup.txt 2>/dev/null || true
+          sed -i '/ViewportDebugBadge/d' app/layout.tsx || true
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: 页面高度跟随外壳" || true
+          git commit -m "chore: 移除临时诊断条与日志" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
@@ -71,7 +46,7 @@ jobs:
           try:
               bid = json.loads(raw)["id"]
           except Exception:
-              print("NO_BUILD", st, raw[:120], flush=True)
+              print("NO_BUILD", st, flush=True)
               raise SystemExit(0)
           dep = None
           for i in range(40):
@@ -83,12 +58,12 @@ jobs:
                   continue
               dep = d.get("deploy_id") or dep
               if d.get("done"):
-                  print("DONE", i, d.get("error"), flush=True)
+                  print("DONE", i, flush=True)
                   break
           if not dep:
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
           print("RESTORE", st, flush=True)
           PY
-          python3 pub.py > cleanup.txt 2>&1 || true
-          cat cleanup.txt
+          python3 pub.py > /tmp/pub.txt 2>&1 || true
+          cat /tmp/pub.txt
