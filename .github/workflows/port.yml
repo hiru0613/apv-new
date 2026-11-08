@@ -1,4 +1,4 @@
-name: fix-dvh
+name: cleanup
 on:
   workflow_dispatch:
 jobs:
@@ -11,33 +11,14 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: patch
+      - name: clean
         run: |
-          python3 - <<'PY'
-          import io
-          p = "styles/phone-shell.css"
-          s = io.open(p, encoding="utf-8").read()
-          reps = [
-            ("    --phone-screen-width: 100vw;\n    --phone-screen-height: 100lvh;",
-             "    --phone-screen-width: 100vw;\n    --phone-screen-height: 100dvh;"),
-            ("    width: 100%;\n    height: 100lvh;\n    background: var(--c-page-body-bg);",
-             "    width: 100%;\n    height: 100dvh;\n    background: var(--c-page-body-bg);"),
-            ("    width: 100vw;\n    height: 100lvh;\n    padding: 0;",
-             "    width: 100vw;\n    height: 100dvh;\n    padding: 0;"),
-            ("    width: 100vw;\n    height: 100lvh;\n    margin: 0;",
-             "    width: 100vw;\n    height: 100dvh;\n    margin: 0;"),
-          ]
-          for old, new in reps:
-              if s.count(old) != 1:
-                  raise SystemExit("BAD_ANCHOR: " + old[:40])
-              s = s.replace(old, new)
-          io.open(p, "w", encoding="utf-8").write(s)
-          print("CSS_OK")
-          PY
+          git rm -f netlify.txt npm.txt tsc.txt report.txt components/viewport-debug-badge.tsx || true
+          sed -i '/ViewportDebugBadge/d' app/layout.tsx
           git config user.name "kong-bot"
           git config user.email "bot@local"
-          git add styles/phone-shell.css
-          git commit -m "fix: 用 dvh 代替 lvh，消掉底部多出的 62px" || true
+          git add -A
+          git commit -m "chore: 清掉临时诊断组件与日志" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
@@ -62,7 +43,7 @@ jobs:
                   return 0, str(e)[:200]
           time.sleep(5)
           st, raw = call("POST", "/sites/" + S + "/builds?branch=main", {})
-          print("BUILD", st, raw[:200], flush=True)
+          print("BUILD", st, raw[:160], flush=True)
           try:
               bid = json.loads(raw)["id"]
           except Exception:
@@ -76,25 +57,25 @@ jobs:
               except Exception:
                   continue
               dep = d.get("deploy_id") or dep
-              print("poll", i, d.get("done"), d.get("error"), dep, flush=True)
               if d.get("done"):
+                  print("DONE", i, d.get("error"), flush=True)
                   break
           if not dep:
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
-          print("RESTORE", st, raw[:200], flush=True)
+          print("RESTORE", st, flush=True)
           st, raw = call("GET", "/sites/" + S)
           try:
               pd = (json.loads(raw).get("published_deploy") or {})
-              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], pd.get("published_at"), flush=True)
+              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], flush=True)
           except Exception:
               print("READFAIL", flush=True)
           PY
-          python3 pub.py > netlify.txt 2>&1 || true
+          python3 pub.py > cleanup.txt 2>&1 || true
+          cat cleanup.txt
       - name: save
         if: always()
         run: |
           rm -f pub.py
-          git add netlify.txt
-          git commit -m "chore: dvh 发布记录" || true
-          git push origin HEAD:main
+          git rm -f cleanup.txt || true
+          git commit -m "chore: 清理" || true
