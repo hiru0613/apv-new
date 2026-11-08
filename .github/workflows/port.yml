@@ -1,4 +1,4 @@
-name: deploy-legacy2
+name: legacy-tar
 on:
   workflow_dispatch:
 jobs:
@@ -11,34 +11,36 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: fetch-legacy
+      - name: build-branch
         continue-on-error: true
         run: |
           set +e
-          {
-            echo "=== ls-remote ==="
-            git ls-remote https://github.com/hiru0613/ai-virtual-phone0613.git main 2>&1 | head -5
-            echo "=== fetch ==="
-            git fetch --depth=1 https://github.com/hiru0613/ai-virtual-phone0613.git main 2>&1 | tail -5
-            echo "FETCH_EXIT=$?"
-            echo "=== checkout ==="
-            git checkout -B legacy FETCH_HEAD 2>&1 | tail -5
-            echo "CO_EXIT=$?"
-            echo "=== push ==="
-            git push -f origin legacy 2>&1 | tail -5
-            echo "PUSH_EXIT=$?"
-            echo "=== head ==="
-            git log -1 --oneline
-          } > steps.txt 2>&1
-          cat steps.txt
+          exec > steps.txt 2>&1
+          set -x
+          mkdir -p /tmp/old
+          curl -sL -o /tmp/old.tgz https://codeload.github.com/hiru0613/ai-virtual-phone0613/tar.gz/refs/heads/main
+          echo "CURL=$?"
+          ls -l /tmp/old.tgz
+          tar -xzf /tmp/old.tgz -C /tmp/old --strip-components=1
+          echo "TAR=$?"
+          ls /tmp/old | head -20
+          git checkout -B legacy origin/main
+          git rm -rq --ignore-unmatch .
+          cp -a /tmp/old/. .
+          rm -rf /tmp/old
+          git add -A
+          git -c user.name=kong-bot -c user.email=bot@local commit -qm "chore: 换回旧仓库代码" || true
+          git push -f origin legacy
+          echo "PUSH=$?"
+          git log -1 --oneline
       - name: save
         if: always()
         run: |
-          git config user.name "kong-bot"
-          git config user.email "bot@local"
-          git add steps.txt
-          git commit -m "chore: legacy 拉取诊断" || true
-          git push origin HEAD:main
+          set +e
+          git checkout main 2>/dev/null || true
+          git add steps.txt 2>/dev/null
+          git -c user.name=kong-bot -c user.email=bot@local commit -qm "chore: legacy 步骤日志" || true
+          git push origin HEAD:main || true
       - name: build-and-publish
         continue-on-error: true
         run: |
@@ -83,11 +85,5 @@ jobs:
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
           print("RESTORE", st, flush=True)
-          st, raw = call("GET", "/sites/" + S)
-          try:
-              pd = (json.loads(raw).get("published_deploy") or {})
-              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], flush=True)
-          except Exception:
-              print("READFAIL", flush=True)
           PY
           python3 pub.py
