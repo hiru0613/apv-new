@@ -1,3 +1,8 @@
+[[redirects]]
+  from = "/hub/*"
+  to = "http://115.159.157.79:8787/:splat"
+  status = 200
+  force = true
 [build]
   command = "npm run build"
   publish = ".next"

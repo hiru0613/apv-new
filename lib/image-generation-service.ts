@@ -724,10 +724,54 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
   }
 }
 
+/**
+ * 角色参考图 + 当前穿搭图 → 一张横向拼接的参考图。
+ * 生图接口只吃一张参考图，所以两张要合成一张再送；只有一张时原样返回。
+ */
+export async function composeReferencePair(
+  characterDataUrl: string | null,
+  outfitDataUrl: string | null,
+): Promise<string | null> {
+  if (!characterDataUrl) return outfitDataUrl;
+  if (!outfitDataUrl) return characterDataUrl;
+  if (typeof document === 'undefined') return characterDataUrl;
+
+  try {
+    const pair = await Promise.all([
+      loadDataUrlImage(characterDataUrl),
+      loadDataUrlImage(outfitDataUrl),
+    ]);
+    const left = pair[0];
+    const right = pair[1];
+    const leftHeight = left.naturalHeight || left.height || 0;
+    const rightHeight = right.naturalHeight || right.height || 0;
+    if (!leftHeight || !rightHeight) return characterDataUrl;
+
+    const gap = 24;
+    const targetHeight = Math.min(1024, Math.max(leftHeight, rightHeight));
+    const leftWidth = Math.max(1, Math.round((left.naturalWidth || left.width) * (targetHeight / leftHeight)));
+    const rightWidth = Math.max(1, Math.round((right.naturalWidth || right.width) * (targetHeight / rightHeight)));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = leftWidth + gap + rightWidth;
+    canvas.height = targetHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return characterDataUrl;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(left, 0, 0, leftWidth, targetHeight);
+    context.drawImage(right, leftWidth + gap, 0, rightWidth, targetHeight);
+    return canvas.toDataURL('image/jpeg', 0.92);
+  } catch {
+    return characterDataUrl;
+  }
+}
 export async function generateImageFromConfiguredApi(params: {
   description: string;
   characterId?: string;
   useReferenceImage?: boolean;
+  /** 衣柜插件注入的当前穿搭图（data URL）；和角色参考图同时存在时合成一张再送生图 */
+  outfitImageDataUrl?: string;
   settings?: ImageGenerationSettings;
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult | null> {
@@ -784,8 +828,18 @@ export async function generateImageFromConfiguredApi(params: {
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null;
   throwIfAborted(params.signal);
-  const referenceImageDataUrl = rawReferenceImageDataUrl
+  const characterImageDataUrl = rawReferenceImageDataUrl
     ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
+    : null;
+  // 衣柜的穿搭图：只在「使用参考图」时生效；两张都有就拼一张，只有一张就用那张
+  const rawOutfitImageDataUrl = params.useReferenceImage && params.outfitImageDataUrl?.trim()
+    ? params.outfitImageDataUrl.trim()
+    : null;
+  const outfitImageDataUrl = rawOutfitImageDataUrl
+    ? await normalizeReferenceImageForEdit(rawOutfitImageDataUrl).catch(() => null)
+    : null;
+  const referenceImageDataUrl = characterImageDataUrl || outfitImageDataUrl
+    ? await composeReferencePair(characterImageDataUrl, outfitImageDataUrl)
     : null;
   throwIfAborted(params.signal);
   const prompt = mergePrompt(description, openaiSettings.extraPrompt);

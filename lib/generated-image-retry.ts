@@ -1,6 +1,7 @@
 import { saveChatImageToIndexedDB } from "./chat-asset-storage";
 import { syncChatGeneratedImagePromptText, updateChatMessage, type ChatMessage } from "./chat-storage";
 import { generatedImageFilename, generateImageFromConfiguredApi } from "./image-generation-service";
+import { readChatPluginData } from "./chat-plugin-storage";
 import { updateMomentPost } from "./moments-storage";
 import type { MomentPost } from "./moments-types";
 
@@ -20,6 +21,45 @@ function dispatchMomentsUpdated(): void {
     window.dispatchEvent(new CustomEvent("moments-updated"));
 }
 
+const WARDROBE_REFERENCE_STORAGE_PREFIX = 'kong_wardrobe_active_image:';
+
+/**
+ * 衣柜插件和宿主跑在同一个页面里，它把当前锁定的穿搭图（data URL）写在 localStorage。
+ * 这里读出来当第二张参考图；没有或不合法就返回 undefined。
+ */
+function readWardrobeLocalImage(characterId: string): string | undefined {
+    try {
+        const value = window.localStorage.getItem(WARDROBE_REFERENCE_STORAGE_PREFIX + characterId);
+        if (!value || !value.startsWith('data:image/')) return undefined;
+        return value;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * 兜底：直接读衣柜插件的私有数据桶（chat_plugin_data_v1:kong-wardrobe）。
+ * 插件和宿主同页同库，这里能同步拿到它锁定的那套衣服的图；插件升级后走 localStorage 那条路。
+ */
+function readWardrobeLockedImage(characterId: string): string | undefined {
+    try {
+        const data = readChatPluginData('kong-wardrobe');
+        const meta = data['meta:' + characterId] as { lockedId?: string | null } | undefined;
+        if (!meta || !meta.lockedId) return undefined;
+        const list = data['outfits:' + characterId] as Array<{ id?: string; imageData?: string }> | undefined;
+        if (!Array.isArray(list)) return undefined;
+        const hit = list.find(item => item && item.id === meta.lockedId);
+        const image = hit && typeof hit.imageData === 'string' ? hit.imageData : '';
+        return image.startsWith('data:image/') ? image : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+export function readWardrobeReferenceImage(characterId?: string): string | undefined {
+    if (!characterId || typeof window === 'undefined') return undefined;
+    return readWardrobeLocalImage(characterId) || readWardrobeLockedImage(characterId);
+}
 export function createPendingChatGeneratedImageData(
     mediaData: ChatMessage["mediaData"] | undefined,
     description?: string,
@@ -77,6 +117,7 @@ export async function generateAndApplyChatGeneratedImage(
             description,
             characterId,
             useReferenceImage: effectiveUseReference,
+            outfitImageDataUrl: effectiveUseReference ? readWardrobeReferenceImage(characterId) : undefined,
             signal: options?.signal,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");

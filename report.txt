@@ -1,4 +1,0 @@
-SYNTAX_OK
-WROTE components/viewport-debug-badge.tsx
-PATCHED app/layout.tsx (2)
-ALL_OK_4

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, ChevronLeft, Code, FileText, Image as ImageIcon, MessageSquare, MoreHorizontal, RotateCcw, Sparkles, Trash2, UserRound } from "lucide-react";
+import { AlertCircle, ChevronLeft, Code, Image as ImageIcon, MessageSquare, MoreHorizontal, RotateCcw, Sparkles, Trash2, UserRound } from "lucide-react";
 import { PageShell } from "@/components/ui/page-shell";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
@@ -12,7 +12,6 @@ import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { CHAT_SESSION_CSS_EXAMPLE } from "@/lib/css-examples";
 import {
-    appendMascotMessage,
     clearMascotToolHistoryMessages,
     createMascotSession,
     deleteMascotMessageWithLinkedTools,
@@ -28,12 +27,6 @@ import {
     subscribeMascotChat,
     switchMascotSession,
 } from "@/lib/mascot-chat-store";
-import { ChatDocAttachmentTray, ChatDocImportSheet } from "./chat-doc-import";
-import {
-    attachmentCardLabel,
-    resolveAttachmentText,
-    type ChatDocAttachment,
-} from "@/lib/chat-document-import";
 import type { MascotMsg } from "@/lib/mascot-engine";
 import { getMascotContext, subscribeMascotContext } from "@/lib/mascot-context";
 import {
@@ -469,9 +462,6 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
     const [backgroundUrl, setBackgroundUrl] = useState("");
     const [inputText, setInputText] = useState("");
     const [pendingImages, setPendingImages] = useState<string[]>([]);
-    // 文件导入：待发的长文档卡片（发送时全文进上下文，气泡只显示一行摘要）
-    const [docAttachments, setDocAttachments] = useState<ChatDocAttachment[]>([]);
-    const [docImportOpen, setDocImportOpen] = useState(false);
     const [imagePreviewCache, setImagePreviewCache] = useState<Record<string, string>>({});
     const [showEmojiPanel, setShowEmojiPanel] = useState(false);
     const [showInfo, setShowInfo] = useState(false);
@@ -696,26 +686,13 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
             return;
         }
         const text = inputText.trim();
-        const docs = docAttachments;
-        if (!text && pendingImages.length === 0 && docs.length === 0) return;
+        if (!text && pendingImages.length === 0) return;
         setInputText("");
         textareaRef.current?.style.setProperty("height", "auto");
         const images = pendingImages;
         setPendingImages([]);
-        setDocAttachments([]);
         setShowEmojiPanel(false);
-        // 文件卡：text 放全文（进模型上下文），displayText 放一行摘要（气泡只显示卡片）
-        for (const attachment of docs) {
-            const body = resolveAttachmentText(attachment);
-            if (!body.trim()) continue;
-            await appendMascotMessage({ text: body, displayText: attachmentCardLabel(attachment) });
-        }
-        if (text || images.length > 0) {
-            await sendMascotMessage({ text, images, context });
-        } else if (docs.length > 0) {
-            // 只发文件没打字：材料进上下文后直接要一次回复
-            await generateMascotReply({ context });
-        }
+        await sendMascotMessage({ text, images, context });
     };
 
     const handleGenerateReply = async () => {
@@ -1144,13 +1121,6 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                         })}
                     </div>
                 )}
-                <ChatDocAttachmentTray
-                    attachments={docAttachments}
-                    onRemove={(docId) => setDocAttachments((prev) => prev.filter((item) => item.docId !== docId))}
-                    onInsert={(attachment) => appendEmoji(resolveAttachmentText(attachment))}
-                    onOpenImport={() => setDocImportOpen(true)}
-                    disabled={chat.isThinking}
-                />
                 <textarea
                     ref={textareaRef}
                     rows={1}
@@ -1215,17 +1185,8 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                     </button>
                     <button
                         type="button"
-                        onClick={() => setDocImportOpen(true)}
-                        className="ui-bare-btn text-[var(--c-text)]"
-                        aria-label="导入文件"
-                        title="导入文件（docx / doc / txt / md / pdf）"
-                    >
-                        <FileText size={22} strokeWidth={1.5} />
-                    </button>
-                    <button
-                        type="button"
                         onClick={() => void handleSend()}
-                        disabled={!chat.isThinking && !inputText.trim() && pendingImages.length === 0 && docAttachments.length === 0}
+                        disabled={!chat.isThinking && !inputText.trim() && pendingImages.length === 0}
                         className="ui-bare-btn text-[var(--c-text)]"
                         aria-label={chat.isThinking ? "停止生成" : "发送"}
                     >
@@ -1251,17 +1212,6 @@ export function MascotChatRoom({ onBack, onDeleted }: MascotChatRoomProps) {
                 </div>
                 {showEmojiPanel && <EmojiPanel onSelect={appendEmoji} />}
             </div>
-
-            <ChatDocImportSheet
-                open={docImportOpen}
-                onClose={() => setDocImportOpen(false)}
-                onInsertText={(text) => appendEmoji(text)}
-                onAttach={(attachment) => setDocAttachments((prev) => (
-                    prev.some((item) => item.docId === attachment.docId)
-                        ? prev.map((item) => (item.docId === attachment.docId ? attachment : item))
-                        : [...prev, attachment]
-                ))}
-            />
 
             {showInfo && wrapperRef.current?.parentElement && createPortal(
                 <div className="chat-settings-layer absolute inset-0 z-50">
