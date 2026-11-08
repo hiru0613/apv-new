@@ -1,4 +1,4 @@
-name: fit-height
+name: fit-height2
 on:
   workflow_dispatch:
 jobs:
@@ -14,25 +14,28 @@ jobs:
       - name: patch
         run: |
           python3 - <<'PY'
-          import io
+          import io, re
           p = "components/desktop-shell.tsx"
           s = io.open(p, encoding="utf-8").read()
-          if "fitHeights" in s:
+          print("count_shell_guard", s.count("if (!shell) return;"))
+          if "getBoundingClientRect().height" in s and "de.style.height" in s:
               print("ALREADY")
               raise SystemExit(0)
-          old = 'const shell = document.querySelector(".phone-shell-wrap");\n              if (!shell) return;'
-          new = ('const shell = document.querySelector(".phone-shell-wrap");\n'
-                 '              if (!shell) return;\n'
-                 '              const want = Math.round(shell.getBoundingClientRect().height);\n'
-                 '              const de = document.documentElement;\n'
-                 '              if (want > 0 && Math.abs(de.clientHeight - want) > 2) {\n'
-                 '                de.style.height = want + "px";\n'
-                 '                document.body.style.height = want + "px";\n'
-                 '                document.body.style.overflow = "hidden";\n'
-                 '              }')
-          if s.count(old) != 1:
-              raise SystemExit("ANCHOR_MISS")
-          s = s.replace(old, (new + " /* fitHeights */").replace("/* fitHeights */", ""), 1)
+          pat = re.compile(r'(\n)(\s*)(const shell = document\.querySelector\("\.phone-shell-wrap"\);\n\s*if \(!shell\) return;)')
+          m = pat.search(s)
+          if not m:
+              print("NO_MATCH")
+              raise SystemExit(1)
+          ind = m.group(2)
+          block = (m.group(3) + "\n"
+                   + ind + 'const want = Math.round(shell.getBoundingClientRect().height);\n'
+                   + ind + 'const deEl = document.documentElement;\n'
+                   + ind + 'if (want > 0 && Math.abs(deEl.clientHeight - want) > 2) {\n'
+                   + ind + '  deEl.style.height = want + "px";\n'
+                   + ind + '  document.body.style.height = want + "px";\n'
+                   + ind + '  document.body.style.overflow = "hidden";\n'
+                   + ind + '}')
+          s = s[:m.start(3)] + block + s[m.end(3):]
           io.open(p, "w", encoding="utf-8").write(s)
           print("FIT_OK")
           PY
@@ -40,7 +43,7 @@ jobs:
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "fix: 页面高度跟随外壳，消掉底部 62px 露底" || true
+          git commit -m "fix: 页面高度跟随外壳" || true
           git push origin HEAD:main
       - name: build-and-publish
         continue-on-error: true
