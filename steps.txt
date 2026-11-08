@@ -36,3 +36,15 @@ branch 'legacy' set up to track 'origin/main'.
 + cp -a /tmp/old/. .
 + rm -rf /tmp/old
 + git add -A
++ git -c user.name=kong-bot -c user.email=bot@local commit -qm 'chore: 换回旧仓库代码'
++ git push -f origin legacy
+remote: 
+remote: Create a pull request for 'legacy' on GitHub by visiting:        
+remote:      https://github.com/hiru0613/apv-new/pull/new/legacy        
+remote: 
+To https://github.com/hiru0613/apv-new
+ * [new branch]      legacy -> legacy
++ echo PUSH=0
+PUSH=0
++ git log -1 --oneline
+2c9c081 chore: 换回旧仓库代码
