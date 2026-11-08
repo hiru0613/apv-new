@@ -1,4 +1,4 @@
-name: cleanup-final
+name: deploy-original
 on:
   workflow_dispatch:
 jobs:
@@ -11,15 +11,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: clean
+      - name: fetch-original
         run: |
-          git rm -f components/viewport-debug-badge.tsx netlify.txt npm.txt tsc.txt report.txt cleanup.txt 2>/dev/null || true
-          sed -i '/ViewportDebugBadge/d' app/layout.tsx || true
           git config user.name "kong-bot"
           git config user.email "bot@local"
-          git add -A
-          git commit -m "chore: 移除临时诊断条与日志" || true
-          git push origin HEAD:main
+          git remote add up https://github.com/xiaolongbao0709/ai-virtual-phone.git
+          git fetch --depth=1 up main
+          git checkout -B original FETCH_HEAD
+          git push -f origin original
+          git log -1 --oneline
       - name: build-and-publish
         continue-on-error: true
         run: |
@@ -38,18 +38,17 @@ jobs:
                   with urllib.request.urlopen(r, timeout=90) as x:
                       return x.status, x.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:200]
+                  return e.code, e.read().decode()[:300]
               except Exception as e:
                   return 0, str(e)[:200]
-          time.sleep(5)
-          st, raw = call("POST", "/sites/" + S + "/builds?branch=main", {})
+          st, raw = call("POST", "/sites/" + S + "/builds?branch=original", {})
+          print("BUILD", st, raw[:200], flush=True)
           try:
               bid = json.loads(raw)["id"]
           except Exception:
-              print("NO_BUILD", st, flush=True)
               raise SystemExit(0)
           dep = None
-          for i in range(40):
+          for i in range(45):
               time.sleep(10)
               st, raw = call("GET", "/sites/" + S + "/builds/" + bid)
               try:
@@ -58,12 +57,17 @@ jobs:
                   continue
               dep = d.get("deploy_id") or dep
               if d.get("done"):
-                  print("DONE", i, flush=True)
+                  print("DONE", i, d.get("error"), flush=True)
                   break
           if not dep:
               raise SystemExit(0)
           st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
-          print("RESTORE", st, flush=True)
+          print("RESTORE", st, raw[:150], flush=True)
+          st, raw = call("GET", "/sites/" + S)
+          try:
+              pd = (json.loads(raw).get("published_deploy") or {})
+              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], flush=True)
+          except Exception:
+              print("READFAIL", flush=True)
           PY
-          python3 pub.py > /tmp/pub.txt 2>&1 || true
-          cat /tmp/pub.txt
+          python3 pub.py
