@@ -15,13 +15,13 @@ jobs:
       - name: probe
         continue-on-error: true
         run: |
-          echo "=== env ===" > netlify.txt
-          python3 --version >> netlify.txt 2>&1
+          echo "=== try ===" > netlify.txt
           cat > probe.py <<'PY'
-          import json, sys, traceback, urllib.request, urllib.error
+          import json, traceback, urllib.request, urllib.error
 
           TOKEN = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           BASE = "https://api.netlify.com/api/v1"
+          SID = "aefc0064-d8ec-4513-876a-7433ae01d0f6"
 
           def call(method, path, body=None):
               data = json.dumps(body).encode() if body is not None else None
@@ -33,63 +33,56 @@ jobs:
                   with urllib.request.urlopen(req, timeout=60) as r:
                       return r.status, r.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:400]
+                  return e.code, e.read().decode()[:300]
               except Exception as e:
-                  return 0, str(e)[:300]
+                  return 0, str(e)[:200]
 
-          def main():
-              st, raw = call("GET", "/sites?name=hiru0613")
-              print("LIST", st, raw[:250], flush=True)
+          def branch_of(raw):
               try:
-                  sites = json.loads(raw)
+                  return (json.loads(raw).get("build_settings") or {}).get("repo_branch")
               except Exception:
-                  sites = []
-              if not isinstance(sites, list) or not sites:
-                  st, raw = call("GET", "/sites")
-                  print("ALL", st, raw[:250], flush=True)
-                  try:
-                      sites = json.loads(raw)
-                  except Exception:
-                      sites = []
-              if not isinstance(sites, list) or not sites:
-                  print("NO_SITE", flush=True)
-                  return
-              site = None
-              for s in sites:
-                  if isinstance(s, dict) and "hiru0613" in str(s.get("url", "")) + str(s.get("name", "")):
-                      site = s
-                      break
-              site = site or sites[0]
-              sid = site["id"]
-              print("SITE", sid, site.get("name"), site.get("url"), flush=True)
-              print("BEFORE", (site.get("build_settings") or {}).get("repo_branch"), flush=True)
-              for i, body in enumerate([{"repo_branch": "main"}, {"build_settings": {"repo_branch": "main"}}, {"repo": {"branch": "main"}}], 1):
-                  st, raw = call("PATCH", "/sites/" + sid, body)
-                  print("PATCH%d" % i, st, raw[:200], flush=True)
-                  st2, raw2 = call("GET", "/sites/" + sid)
-                  try:
-                      now = (json.loads(raw2).get("build_settings") or {}).get("repo_branch")
-                  except Exception:
-                      now = "?"
-                  print("  now=", now, flush=True)
-                  if now == "main":
-                      break
-              st, raw = call("POST", "/sites/" + sid + "/builds", {"clear_cache": False})
-              print("BUILD", st, raw[:300], flush=True)
+                  return "?"
 
-          try:
-              main()
-          except Exception:
-              traceback.print_exc()
+          FULL = {
+              "cmd": "npm run build",
+              "dir": ".next",
+              "allowed_branches": ["main", "dev"],
+              "installation_id": 171354416,
+              "provider": "github",
+              "repo_type": "git",
+              "repo_url": "https://github.com/hiru0613/apv-new",
+              "repo_path": "hiru0613/apv-new",
+              "repo_branch": "main",
+          }
+
+          attempts = [
+              ("full", {"build_settings": dict(FULL)}),
+              ("full-main-only", {"build_settings": dict(FULL, allowed_branches=["main"])}),
+              ("partial+ids", {"build_settings": {
+                  "repo_branch": "main", "provider": "github",
+                  "repo_path": "hiru0613/apv-new",
+                  "repo_url": "https://github.com/hiru0613/apv-new",
+                  "installation_id": 171354416, "repo_type": "git",
+                  "cmd": "npm run build", "dir": ".next"}}),
+              ("flat", {"repo_branch": "main", "repo_path": "hiru0613/apv-new", "provider": "github"}),
+          ]
+
+          for name, body in attempts:
+              st, raw = call("PATCH", "/sites/" + SID, body)
+              print("%-14s patch=%s resp_branch=%s" % (name, st, branch_of(raw)), flush=True)
+              if st >= 400:
+                  print("   err:", raw[:200], flush=True)
+              st2, raw2 = call("GET", "/sites/" + SID)
+              print("   get_branch=%s" % branch_of(raw2), flush=True)
+              if branch_of(raw2) == "main":
+                  print("CHANGED_BY", name, flush=True)
+                  break
+
+          st, raw = call("GET", "/sites/" + SID)
+          print("FINAL", branch_of(raw), flush=True)
+          st, raw = call("POST", "/sites/" + SID + "/builds?clear_cache=false", {})
+          print("BUILD", st, raw[:200], flush=True)
+
           PY
-          python3 probe.py >> netlify.txt 2>&1
-          echo "=== done ===" >> netlify.txt
-      - name: save
-        if: always()
-        run: |
-          rm -f probe.py
-          git config user.name "kong-bot"
-          git config user.email "bot@local"
-          git add netlify.txt
-          git commit -m "chore: netlify 探测结果" || true
-          git push origin HEAD:main
+          python3 probe.py >> netlify.txt 2>&1 || true
+      -
