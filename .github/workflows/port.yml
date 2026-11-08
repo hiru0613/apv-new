@@ -40,11 +40,10 @@ jobs:
           def main():
               st, raw = call("GET", "/sites?name=hiru0613")
               print("LIST", st, raw[:250], flush=True)
-              sites = []
               try:
                   sites = json.loads(raw)
               except Exception:
-                  print("LIST-NOT-JSON", flush=True)
+                  sites = []
               if not isinstance(sites, list) or not sites:
                   st, raw = call("GET", "/sites")
                   print("ALL", st, raw[:250], flush=True)
@@ -88,10 +87,9 @@ jobs:
       - name: save
         if: always()
         run: |
-          sed -i 's/nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e/REVOKED/g' .github/workflows/port.yml || true
           rm -f probe.py
           git config user.name "kong-bot"
           git config user.email "bot@local"
-          git add -A
+          git add netlify.txt
           git commit -m "chore: netlify 探测结果" || true
-          git push origin HEAD:main || true
+          git push origin HEAD:main
