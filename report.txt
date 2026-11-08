@@ -1,5 +1,15 @@
-SYNTAX_OK
-PATCHED components/mixology/mixology-app.tsx (8)
-PATCHED components/settings/worldbook-manager.tsx (7)
-ALL_OK_2
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/usr/lib/python3.12/ast.py", line 52, in parse
+    return compile(source, filename, mode, flags,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<unknown>", line 1
+    没有这个文件：tools/patch_filevault3.py
+          ^
+SyntaxError: invalid character '：' (U+FF1A)
+  File "/home/runner/work/apv-new/apv-new/patch3.py", line 1
+    没有这个文件：tools/patch_filevault3.py
+          ^
+SyntaxError: invalid character '：' (U+FF1A)
+PATCH_FAILED
 TSC_READY
