@@ -12,18 +12,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 配置 git
+      - name: 合并并记录冲突
         run: |
           git config user.name "kong-bot"
           git config user.email "bot@local"
-
-      - name: 把 dev 合到最新 main 上
-        run: |
-          git fetch origin dev
-          git fetch origin main
-          git checkout -B feat/filevault origin/main
-          echo "=== 开始合并 ==="
-          git merge origin/dev --no-edit || echo "MERGE_CONFLICT"
-          echo "=== 冲突文件 ==="
-          git diff --name-only --diff-filter=U || true
-          git push origin feat/filevault --force
+          git fetch origin dev main
+          git checkout -B work origin/main
+          rm -f result.txt
+          if git merge origin/dev --no-edit; then
+            echo "MERGED_OK" > result.txt
+          else
+            echo "CONFLICT" > result.txt
+            git diff --name-only --diff-filter=U >> result.txt
+            git merge --abort
+            git checkout -B work origin/main
+          fi
+          cat result.txt
+          git add result.txt
+          git commit -m "chore: merge result" || true
+          git push origin work:feat/filevault --force
