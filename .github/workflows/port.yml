@@ -12,11 +12,13 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: patch-branch
+      - name: probe
+        continue-on-error: true
         run: |
-          set +e
-          python3 - <<'PY' > netlify.txt 2>&1
-          import json, traceback, urllib.request, urllib.error
+          echo "=== env ===" > netlify.txt
+          python3 --version >> netlify.txt 2>&1
+          cat > probe.py <<'PY'
+          import json, sys, traceback, urllib.request, urllib.error
 
           TOKEN = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           BASE = "https://api.netlify.com/api/v1"
@@ -29,66 +31,67 @@ jobs:
               req.add_header("User-Agent", "kong-bot")
               try:
                   with urllib.request.urlopen(req, timeout=60) as r:
-                      raw = r.read().decode()
-                      try:
-                          return r.status, json.loads(raw or "{}"), raw
-                      except Exception:
-                          return r.status, None, raw
+                      return r.status, r.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, None, e.read().decode()[:500]
+                  return e.code, e.read().decode()[:400]
               except Exception as e:
-                  return 0, None, str(e)[:300]
+                  return 0, str(e)[:300]
 
           def main():
-              st, sites, raw = call("GET", "/sites?name=hiru0613")
-              print("LIST status=", st, "raw_head=", raw[:200])
+              st, raw = call("GET", "/sites?name=hiru0613")
+              print("LIST", st, raw[:250], flush=True)
+              sites = []
+              try:
+                  sites = json.loads(raw)
+              except Exception:
+                  print("LIST-NOT-JSON", flush=True)
               if not isinstance(sites, list) or not sites:
-                  st, sites, raw = call("GET", "/sites")
-                  print("LIST-ALL status=", st, "raw_head=", raw[:200])
+                  st, raw = call("GET", "/sites")
+                  print("ALL", st, raw[:250], flush=True)
+                  try:
+                      sites = json.loads(raw)
+                  except Exception:
+                      sites = []
               if not isinstance(sites, list) or not sites:
-                  print("NO_SITE")
+                  print("NO_SITE", flush=True)
                   return
-
               site = None
               for s in sites:
-                  if not isinstance(s, dict):
-                      continue
-                  if str(s.get("name", "")).startswith("hiru0613") or "hiru0613" in str(s.get("url", "")):
+                  if isinstance(s, dict) and "hiru0613" in str(s.get("url", "")) + str(s.get("name", "")):
                       site = s
                       break
-              if site is None:
-                  site = sites[0]
-
+              site = site or sites[0]
               sid = site["id"]
-              bs = site.get("build_settings") or {}
-              print("SITE", sid, site.get("name"), site.get("url"))
-              print("BEFORE repo_branch=", bs.get("repo_branch"), "default_branch=", site.get("default_branch"))
-
-              for i, body in enumerate([
-                  {"repo_branch": "main"},
-                  {"build_settings": {"repo_branch": "main"}},
-                  {"repo": {"branch": "main"}},
-              ], 1):
-                  st, res, raw = call("PATCH", "/sites/" + sid, body)
-                  print("PATCH%d" % i, json.dumps(body), "status=", st, "resp=", (raw or "")[:200])
-                  st2, cur, _ = call("GET", "/sites/" + sid)
-                  now = ((cur or {}).get("build_settings") or {}).get("repo_branch")
-                  print("   now repo_branch=", now)
+              print("SITE", sid, site.get("name"), site.get("url"), flush=True)
+              print("BEFORE", (site.get("build_settings") or {}).get("repo_branch"), flush=True)
+              for i, body in enumerate([{"repo_branch": "main"}, {"build_settings": {"repo_branch": "main"}}, {"repo": {"branch": "main"}}], 1):
+                  st, raw = call("PATCH", "/sites/" + sid, body)
+                  print("PATCH%d" % i, st, raw[:200], flush=True)
+                  st2, raw2 = call("GET", "/sites/" + sid)
+                  try:
+                      now = (json.loads(raw2).get("build_settings") or {}).get("repo_branch")
+                  except Exception:
+                      now = "?"
+                  print("  now=", now, flush=True)
                   if now == "main":
                       break
-
-              st, build, raw = call("POST", "/sites/" + sid + "/builds", {"clear_cache": False})
-              print("BUILD status=", st, "resp=", (raw or "")[:300])
+              st, raw = call("POST", "/sites/" + sid + "/builds", {"clear_cache": False})
+              print("BUILD", st, raw[:300], flush=True)
 
           try:
               main()
           except Exception:
               traceback.print_exc()
           PY
-          cat netlify.txt
-          python3 -c "import io;p='.github/workflows/port.yml';s=io.open(p,encoding='utf-8').read();io.open(p,'w',encoding='utf-8').write(s.replace('nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e','REVOKED'));print('TOKEN_SCRUBBED')"
+          python3 probe.py >> netlify.txt 2>&1
+          echo "=== done ===" >> netlify.txt
+      - name: save
+        if: always()
+        run: |
+          sed -i 's/nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e/REVOKED/g' .github/workflows/port.yml || true
+          rm -f probe.py
           git config user.name "kong-bot"
           git config user.email "bot@local"
           git add -A
-          git commit -m "chore: netlify 分支切换记录" || true
+          git commit -m "chore: netlify 探测结果" || true
           git push origin HEAD:main || true
