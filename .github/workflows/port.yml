@@ -1,4 +1,4 @@
-name: publish-main
+name: fix-dvh
 on:
   workflow_dispatch:
 jobs:
@@ -11,15 +11,42 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: go
+      - name: patch
+        run: |
+          python3 - <<'PY'
+          import io
+          p = "styles/phone-shell.css"
+          s = io.open(p, encoding="utf-8").read()
+          reps = [
+            ("    --phone-screen-width: 100vw;\n    --phone-screen-height: 100lvh;",
+             "    --phone-screen-width: 100vw;\n    --phone-screen-height: 100dvh;"),
+            ("    width: 100%;\n    height: 100lvh;\n    background: var(--c-page-body-bg);",
+             "    width: 100%;\n    height: 100dvh;\n    background: var(--c-page-body-bg);"),
+            ("    width: 100vw;\n    height: 100lvh;\n    padding: 0;",
+             "    width: 100vw;\n    height: 100dvh;\n    padding: 0;"),
+            ("    width: 100vw;\n    height: 100lvh;\n    margin: 0;",
+             "    width: 100vw;\n    height: 100dvh;\n    margin: 0;"),
+          ]
+          for old, new in reps:
+              if s.count(old) != 1:
+                  raise SystemExit("BAD_ANCHOR: " + old[:40])
+              s = s.replace(old, new)
+          io.open(p, "w", encoding="utf-8").write(s)
+          print("CSS_OK")
+          PY
+          git config user.name "kong-bot"
+          git config user.email "bot@local"
+          git add styles/phone-shell.css
+          git commit -m "fix: 用 dvh 代替 lvh，消掉底部多出的 62px" || true
+          git push origin HEAD:main
+      - name: build-and-publish
         continue-on-error: true
         run: |
-          cat > go.py <<'PY'
-          import json, urllib.request, urllib.error
+          cat > pub.py <<'PY'
+          import json, time, urllib.request, urllib.error
           T = "nfp_nNxx2MaQHT8PtCjkjAkjeMCk8Y2Lwbfp1e1e"
           B = "https://api.netlify.com/api/v1"
           S = "aefc0064-d8ec-4513-876a-7433ae01d0f6"
-          D = "6af00d5062cb039410df05c9"
           def call(m, p, body=None):
               d = json.dumps(body).encode() if body is not None else None
               r = urllib.request.Request(B + p, data=d, method=m)
@@ -30,26 +57,44 @@ jobs:
                   with urllib.request.urlopen(r, timeout=90) as x:
                       return x.status, x.read().decode()
               except urllib.error.HTTPError as e:
-                  return e.code, e.read().decode()[:400]
+                  return e.code, e.read().decode()[:300]
               except Exception as e:
                   return 0, str(e)[:200]
-          st, raw = call("POST", "/sites/" + S + "/deploys/" + D + "/restore", {})
-          print("RESTORE", st, raw[:300], flush=True)
+          time.sleep(5)
+          st, raw = call("POST", "/sites/" + S + "/builds?branch=main", {})
+          print("BUILD", st, raw[:200], flush=True)
+          try:
+              bid = json.loads(raw)["id"]
+          except Exception:
+              raise SystemExit(0)
+          dep = None
+          for i in range(40):
+              time.sleep(10)
+              st, raw = call("GET", "/sites/" + S + "/builds/" + bid)
+              try:
+                  d = json.loads(raw)
+              except Exception:
+                  continue
+              dep = d.get("deploy_id") or dep
+              print("poll", i, d.get("done"), d.get("error"), dep, flush=True)
+              if d.get("done"):
+                  break
+          if not dep:
+              raise SystemExit(0)
+          st, raw = call("POST", "/sites/" + S + "/deploys/" + dep + "/restore", {})
+          print("RESTORE", st, raw[:200], flush=True)
           st, raw = call("GET", "/sites/" + S)
           try:
-              d = json.loads(raw)
-              pd = d.get("published_deploy") or {}
-              print("LIVE branch=", pd.get("branch"), "sha=", str(pd.get("commit_ref"))[:10], "at=", pd.get("published_at"), flush=True)
-          except Exception as e:
-              print("READFAIL", e, flush=True)
+              pd = (json.loads(raw).get("published_deploy") or {})
+              print("LIVE", pd.get("branch"), str(pd.get("commit_ref"))[:10], pd.get("published_at"), flush=True)
+          except Exception:
+              print("READFAIL", flush=True)
           PY
-          python3 go.py > netlify.txt 2>&1 || true
+          python3 pub.py > netlify.txt 2>&1 || true
       - name: save
         if: always()
         run: |
-          rm -f go.py
-          git config user.name "kong-bot"
-          git config user.email "bot@local"
+          rm -f pub.py
           git add netlify.txt
-          git commit -m "chore: 发布 main 部署" || true
+          git commit -m "chore: dvh 发布记录" || true
           git push origin HEAD:main
